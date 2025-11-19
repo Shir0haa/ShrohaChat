@@ -150,12 +150,12 @@ git push origin feature/<task>
 
 * 阶段性验收
 * 演示版准备
-* 项目提交或答辩
+* 项目提交
 
 示例：
 
 ```bash
-git checkout main
+git switch main
 git merge --no-ff dev
 git push origin main
 ```
@@ -186,7 +186,7 @@ git push origin main
 
 ---
 
-# 九、目录结构建议
+# 九、目录结构
 
 ```
 project/
