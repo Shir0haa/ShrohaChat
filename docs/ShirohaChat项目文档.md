@@ -12,7 +12,11 @@
 
 ---
 
-## 日期 / 修改 / 描述 / 作者
+## 修改历史
+
+| 日期 | 版本 | 修改说明 | 作者 |
+| --- | --- | ------- | --- |
+|     |     |         |     |
 
 ---
 
@@ -120,12 +124,14 @@
 
 | 维度   | 约束条件                              |
 | ---- | --------------------------------- |
+|      |                                   |
 
 
 ### 非功能性需求 (NFR)
 
 | 维度   | 指标要求            | 验证方法              |
 | ---- | --------------- | ----------------- |
+|      |                 |                   |
 
 
 ---
@@ -239,39 +245,11 @@ ShirohaChat 是一款**面向大众的即时通讯系统(桌面端)**,采用前�
 
 | 优先级      | 功能模块             | 具体特性                             | 技术实现                    |
 | -------- | ---------------- | -------------------------------- | ----------------------- |
+|          |                  |                                  |                         |
 
 ---
 
 ## 2.6 其他产品需求
-
-### 2.6.1 性能需求 (Performance)
-
-| 指标       | 目标值       | 测试方法                         |
-| -------- | --------- | ---------------------------- |
-
-
-### 2.6.2 可靠性需求 (Reliability)
-
-| 指标     | 目标值      | 实现方式                  |
-| ------ | -------- | --------------------- |
-
-
-### 2.6.3 兼容性需求 (Compatibility)
-
-
-### 2.6.4 安全性需求 (Security)
-
-| 威胁类型  | 防护措施                    |
-| ----- | ----------------------- |
-
-
-### 2.6.5 可维护性需求 (Maintainability)
-
-
-
-### 2.6.6 可扩展性需求 (Scalability)
-
-
 ---
 
 # 第3章 用况建模
@@ -393,805 +371,196 @@ ShirohaChat 是一款**面向大众的即时通讯系统(桌面端)**,采用前�
 
 # 第4章 需求分析
 
-## 4.1 健壮性分析（Robustness Analysis）
+## 4.1 健壮性分析 (Robustness Analysis)
 
-### 4.1.1 分析类清单
+健壮性分析通过区分三类对象（边界、控制、实体）来验证用况逻辑的完整性。针对本次迭代的核心用况 UC-01 即时通讯，我们识别出以下关键分析类：
 
-| 用况 | Boundary（边界类） | Control（控制类） | Entity（实体类） |
-| --- | --- | --- | --- |
-| UC-01 注册账户 | `RegisterView`、`MessageServerAPI` | `RegisterController` | `UserAccount` |
-| UC-02 登录系统 | `LoginView`、`MainWindow`、`MessageServerAPI`、`MessageStore` | `LoginController`、`ConnectionManager` | `UserSession` |
-| UC-03 即时通讯（聊天） | `ConversationListView`、`ChatWindow`、`MessageServerAPI`、`MessageStore` | `ChatController` | `ChatSession`、`Message` |
+### 4.1.1 识别分析类
 
-### 4.1.2 分析类字典 (Analysis Class Dictionary)
+1. **边界对象 (Boundary Objects)**
+   - 职责：系统与外部参与者交互的接口。
+   - ChatWindow (聊天窗口)：显示消息列表、接收用户输入、展示发送状态（转圈/对勾）。
+   - SessionList (会话列表)：显示好友/群组列表及未读红点。
 
-#### 边界类（Boundary / `<<boundary>>`）
+2. **控制对象 (Control Objects)**
+   - 职责：协调业务逻辑，连接边界与实体。
+   - ChatController (聊天控制器)：核心调度者。负责验证消息、创建消息实体、调用网络服务、更新 UI 状态。
+   - NetworkService (网络服务)：负责底层通信（发送数据包、监听接收）。
 
-**`RegisterView`（注册界面）**  
-- 职责（Responsibilities）：  
-  - 展示注册表单并采集输入（账号、密码、确认密码、昵称）。  
-  - 将提交动作转化为 `registerAccount(...)` 请求交给 `RegisterController`。  
-  - 展示输入不合规/账号已存在等错误信息，并在成功后引导用户进入登录界面。  
-- 业务作用：提供账户创建入口，使“注册”这一公共流在界面上可被完成、可被纠错、可被确认。  
-- 归类理由：该对象直接与参与者交互，主要负责输入输出与界面反馈，不承载用况控制与领域状态，属于边界类。  
+3. **实体对象 (Entity Objects)**
+   - 职责：存储系统需要长久保存的数据。
+   - Message (消息)：包含内容、发送者、时间戳、状态（Sending/Delivered/Failed）。
+   - User (用户)：包含用户 ID、昵称、头像。
+   - Session (会话)：维护当前聊天的上下文（是跟谁聊）。
 
-**`LoginView`（登录界面）**  
-- 职责（Responsibilities）：  
-  - 展示登录表单并采集账号与密码。  
-  - 将登录动作转化为 `login(...)` 请求交给 `LoginController`。  
-  - 展示认证失败原因，并在成功时导航进入主界面。  
-- 业务作用：作为系统入口承接认证体验，明确反馈“能否进入系统”。  
-- 归类理由：面向参与者的交互界面，负责呈现与触发，不保存持久业务信息，也不做业务决策，属于边界类。  
+## 4.2 交互建模：通信图
 
-**`MainWindow`（主界面）**  
-- 职责（Responsibilities）：  
-  - 作为应用主容器承载核心模块（会话列表、聊天区域等）。  
-  - 在登录成功后展示主界面并提供会话入口（如 `showHome(...)`、`openChat(...)`）。  
-- 业务作用：提供稳定的“任务工作台”，支撑用户在会话之间切换并持续使用聊天能力。  
-- 归类理由：该对象是 UI 导航与布局容器，主要承担与用户的界面交互，不承担用况编排与领域数据管理，属于边界类。  
+根据 UML 2.2 第9章，通信图强调对象之间的链接关系。这对于发现类图中的"关联"至关重要。
+我们选取 UC-01 的基本流（发送消息）进行建模。
 
-**`ConversationListView`（会话列表）**  
-- 职责（Responsibilities）：  
-  - 展示用户可访问的会话列表与未读计数。  
-  - 将会话选择动作转化为 `openConversation(sessionId)` 交给 `ChatController`。  
-  - 在新消息到达时提升会话并更新未读提示（`promoteSession(...)`、`updateUnread(...)`）。  
-- 业务作用：对应文档中“入口多、重要信息难定位”的痛点，通过排序与未读提示帮助用户快速定位对话。  
-- 归类理由：与参与者直接交互、以信息呈现与交互事件为主，不负责消息一致性与业务规则判断，属于边界类。  
+### 4.2.1 发送消息通信图
 
-**`ChatWindow`（聊天窗口）**  
-- 职责（Responsibilities）：  
-  - 展示消息历史与实时消息流（`displayHistory(...)`、`appendIncoming(...)`）。  
-  - 接收用户输入并触发发送（`submitText(...)`），并呈现发送状态与错误提示（`appendOutgoing(...)`、`updateDeliveryStatus(...)`、`showEmptyWarning()`）。  
-  - 提供历史回看交互入口（滚动触发 `prependHistory(...)`）。  
-- 业务作用：承载“即时通讯（聊天）”用况中用户感知最强的交互环节：发送、接收、状态反馈与历史浏览。  
-- 归类理由：该对象承担界面呈现与交互事件采集；消息可靠性、状态迁移等业务决策由控制/实体承担，属于边界类。  
+[图 4-1 发送消息通信图 - 待补充]
 
-**`MessageStore`（本地存储接口）**  
-- 职责（Responsibilities）：  
-  - 封装对本地持久化资源的访问（保存/查询/分页/更新状态等）。  
-  - 为 `LoginController` 提供同步数据落库能力（`saveSyncData(...)`）。  
-  - 为 `ChatController` 提供消息与历史查询能力（`loadRecentHistory(...)`、`loadOlderHistory(...)`、`loadMessage(...)`）及状态更新能力（`updateDeliveryStatus(...)`）。  
-- 业务作用：把“历史可回看、离线可恢复、状态可追踪”等需求落实为可用的数据访问能力，降低弱网/断线对体验的影响。  
-- 归类理由：在分析模型中，本地数据库/文件系统属于系统外部资源；`MessageStore` 的职责是作为访问该资源的接口与适配层，符合边界类特征。  
+### 4.2.2 通信图分析与链接识别
 
-**`MessageServerAPI`（消息服务接口）**  
-- 职责（Responsibilities）：  
-  - 提供对外部 IM 服务的访问接口：认证、账号检查与创建、连接建立、消息发送、初始同步、历史拉取。  
-  - 接收服务端推送/回执并将事件回调交付给 `ChatController`（如 `onAckReceived`、`onSendFailed`、`receiveIncoming`）。  
-- 业务作用：隔离网络协议与外部服务差异，使控制类聚焦表达“业务意图”（认证/发送/同步）而非通信细节。  
-- 归类理由：它是系统与外部 IM 服务交互的边界对象，负责协议适配与事件传递，不做用况编排与领域决策，属于边界类。  
+通过通信图，我们明确了对象在空间上的结构关系（即"谁认识谁"）：
 
-#### 控制类（Control / `<<control>>`）
+1. UI 与 控制器：ChatWindow 向 ChatController 发送了消息（2: sendMessage），说明窗口必须持有控制器的引用，以便触发业务逻辑。
+2. 控制器 与 实体：ChatController 创建并操作 Message（3: create），说明控制器管理着消息实体的生命周期。
+3. 控制器 与 网络：ChatController 调用 NetworkService（4: push），说明业务逻辑层依赖于基础设施层来执行发送任务。
 
-**`RegisterController`（注册控制器）**  
-- 职责（Responsibilities）：  
-  - 编排 UC-01 注册用况：接收注册请求、执行输入校验、发起账号检查与创建、驱动界面反馈与跳转。  
-  - 在校验失败/账号占用等分支中做出控制决策（继续编辑 vs. 结束用况）。  
-  - 在账号创建成功后初始化 `UserAccount` 实体，使“注册结果”沉淀为可识别的领域对象。  
-- 业务作用：保证注册流程的顺序一致与分支一致，避免 UI 直接面对外部服务与领域对象而产生耦合。  
-- 归类理由：该对象的核心是用况流程控制与协调，典型属于控制类。  
+### 4.2.3 从通信图导出分析类图
 
-**`LoginController`（登录控制器）**  
-- 职责（Responsibilities）：  
-  - 编排 UC-02 登录用况：发起认证、处理成功/失败、创建会话上下文并进入主界面。  
-  - 组织“登录后初始化”：建立连接、请求初始同步、驱动本地落库与主界面展示。  
-- 业务作用：把登录从“单次认证”扩展为“进入可用运行态”的完整流程，保证进入主界面前关键数据与连接已就绪。  
-- 归类理由：负责跨边界对象（服务接口/本地存储/主界面）与实体对象（会话）的协调与控制，属于控制类。  
+根据通信图中识别出的链接 (Links) 和消息 (Messages)，我们可以直接转化为类图中的关联 (Associations) 和操作 (Operations)。
 
-**`ConnectionManager`（连接管理器）**  
-- 职责（Responsibilities）：  
-  - 管理连接的建立与维持（`connect(...)`、`maintainConnection()`），为上层提供稳定的连接状态。  
-  - 通过 `MessageServerAPI` 建立与 IM 服务的实时通道，并在异常情况下提供重连/保持策略的落点。  
-- 业务作用：把“弱网与断线重连”的横切关注点从具体用况中抽离，提高系统健壮性与复用性。  
-- 归类理由：负责对系统资源（连接通道）进行协调与策略控制，不表达持久领域概念，属于控制类。  
+- **链接 -> 关联**：通信图中两个对象之间有连线，类图中这两个类之间就有关联关系。
+- **消息 -> 方法**：对象 A 向 对象 B 发送消息 doSomething()，则 类 B 中必须定义方法 doSomething()
 
-**`ChatController`（聊天控制器）**  
-- 职责（Responsibilities）：  
-  - 编排 UC-03 聊天用况：打开会话、加载历史、发送/重发消息、处理接收消息与会话列表更新。  
-  - 通过 `MessageStore` 完成“先落库/再展示”的一致性策略，并更新投递状态。  
-  - 通过 `MessageServerAPI` 发送消息与拉取历史，并处理异步事件回调（ACK、发送失败、服务端推送）。  
-- 业务作用：统一管理即时通讯交互的控制流，保证“状态可见、消息不丢、未读可控、历史可回看”。  
-- 归类理由：以用况编排与对象协作为核心，而非承载业务数据本体，属于控制类。  
+[图 4-2 类图 - 待补充]
 
-#### 实体类（Entity / `<<entity>>`）
+### 4.2.4 类职责说明
 
-**`UserAccount`（用户账号）**  
-- 职责（Responsibilities）：  
-  - 表达注册用户的稳定身份（账号标识）与基础资料（昵称）。  
-  - 在注册成功后作为领域对象被创建/初始化，为后续登录与会话建立提供身份依据。  
-- 业务作用：统一承载“账号体系”的核心信息，支撑注册与登录两个公共流。  
-- 归类理由：具备稳定标识且需要长期存在（可被持久化与引用），属于实体类。  
+- **ChatWindow**: 负责界面的渲染。它不包含业务逻辑，只负责将用户的点击转发给 ChatController。
+- **ChatController**: 系统的核心。它隔离了界面和网络，确保界面不知道网络是如何实现的（符合黑盒原则）。它持有 NetworkService 的句柄来发送数据。
+- **Message**: 纯数据类（Data Object）。包含第一次迭代所需的属性，如 content (内容) 和 status (用于UI显示转圈或对勾)。
 
-**`UserSession`（用户会话）**  
-- 职责（Responsibilities）：  
-  - 保存认证后生成的会话令牌与过期时间，表达“已认证上下文”。  
-  - 维护连接状态（`connectionState`），为消息收发与重连策略提供状态基线。  
-- 业务作用：把“用户已登录”落实为可管理的数据对象，并作为进入主界面与后续通信的运行时上下文。  
-- 归类理由：会话具备可识别性（token）与随时间演化的状态，需要被一致管理，属于实体类。  
+## 4.3 交互建模
 
-**`ChatSession`（会话/对话）**  
-- 职责（Responsibilities）：  
-  - 表达对话会话的标识与类型（私聊/群聊），并维护未读计数。  
-  - 提供未读计数的基本行为（`incrementUnread()`、`resetUnread()`）。  
-- 业务作用：作为会话列表中的“入口对象”，支撑选择进入、未读提示与会话提升。  
-- 归类理由：具备稳定标识（sessionId）并可被持久化与引用，属于实体类。  
+### 4.3.1 活动图
 
-**`Message`（消息）**  
-- 职责（Responsibilities）：  
-  - 表达消息内容与元数据（类型、时间戳、投递状态）。  
-  - 通过 `messageId` 支撑 Server-ACK、失败重试与去重等可靠性机制。  
-  - 提供投递状态迁移的核心行为（`markSending()`、`markDelivered()`、`markFailed(...)`）。  
-- 业务作用：即时通讯的核心业务对象，直接对应用户的“表达内容”与系统的“投递反馈”。  
-- 归类理由：消息具有唯一标识、可持久存储、可检索与可追踪状态，属于实体类。  
+**图 4-3 发送消息活动图** - 该图展示了消息从用户输入到最终状态更新的完整业务逻辑流
 
-#### 值对象/枚举（用于约束领域状态）
+**活动图说明**：
 
-- `DeliveryStatus`：约束消息投递状态（Sending/Delivered/Failed/Read），对应聊天用况中的“发送中/已送达/发送失败/已读”等用户可感知状态。  
-- `MessageType`：约束消息形态（Text/Image/Voice/Emoji/File），对应多模态表达需求。  
-- `SessionType`：区分私聊与群聊（Private/Group），影响参与者规模与业务规则。  
-- `ConnectionState`：表达连接状态机（Disconnected/Connecting/Connected/Reconnecting），支撑重连与状态展示。  
+- **泳道 (Swimlanes)**：将活动划分为"用户"、"客户端系统"、"服务器"三个责任区，明确了职责边界。
+- **决策节点 (Decision Nodes)**：图中包含两个关键判断：
+  1. 前置校验：在发送前拦截非法内容（空消息）。
+  2. 后置确认：根据是否收到 ACK 决定消息最终状态，这是保证数据一致性的逻辑核心。
+
+### 4.3.2 顺序图
+
+**图 4-4 消息发送与ACK机制顺序图** - 该图依据 UML 2.2 规范，展示了边界对象、控制对象与实体对象之间的时间序列交互。
+
+**顺序图说明**：
+
+- **生命线 (Lifelines)**：清晰列出了参与交互的所有对象。
+- **激活条 (Activation Bars)**：细长的矩形表示对象处于活动（处理）状态的时间段。
+- **消息类型**：
+  - 同步消息（实心箭头）：如 sendMessage()，表示调用后等待返回。
+  - 异步消息（开箭头）：如 ACK 回执，表示网络层的异步通知。
+- **对象创建**：消息 3 (create) 展示了 Message 实体是在发送过程中被动态创建的。
+
+### 4.3.3 状态机图
+
+**图 4-5 消息实体状态机图** - 根据项目"高可靠性"的需求，Message 对象不仅是数据容器，还是一个具有复杂生命周期的状态机。
+
+**状态机图说明**：
+
+- **状态 (States)**：
+  - Sending：中间瞬态。进入此状态时（entry action）会启动超时计时器。
+  - Delivered：最终成功状态。
+  - Failed：异常状态。此状态允许转换回 Sending 状态（即重发机制）。
+- **转换 (Transitions)**：
+  - [事件: 网络超时 > 3s]：这是一个监护条件 (Guard Condition)，定义了从发送中变为失败的触发逻辑。
+  - Failed --> Sending：这个闭环路径完美解释了需求中的"重试机制"。
+
+## 4.4 需求分析小结
+
+通过本章的分析工作，我们完成了从外部需求到内部逻辑的映射：
+
+1. 健壮性分析 - 识别了 ChatController 和 Message 等关键类。
+2. 通信图 - 确定了这些类之间的静态链接关系。
+3. 活动图 - 梳理了业务逻辑的分支判断。
+4. 顺序图 - 验证了对象协作的时序正确性。
+5. 状态机图 - 确保了核心对象生命周期的完整性。
 
 ---
-
-## 4.2 用况实现（Use Case Realization）
-
-### 4.2.1 UC-01：注册账户（Register Account）
-
-```plantuml
-@startuml SD_UC01_Register
-title UC-01 注册账户（Register Account）— 基本流 + 关键备选流
-autonumber
-
-!pragma teoz true
-skinparam monochrome true
-skinparam shadowing false
-skinparam maxMessageSize 42
-skinparam sequenceMessageAlign left
-hide footbox
-
-actor "用户\nUser" as U
-participant "注册界面\nRegisterView" as RV <<boundary>>
-participant "注册控制器\nRegisterController" as RC <<control>>
-participant "用户账号\nUserAccount" as UA <<entity>>
-participant "消息服务接口\nMessageServerAPI" as API <<boundary>>
-actor "IM 服务\nIMServer" as IMS
-
-== 基本流 ==
-U -> RV : 点击“注册”
-RV -> RC : registerAccount(accountId,password,\nconfirmPassword,nickname)
-RC -> RC : validateRegistrationInput(...)
-RC -->> RC : valid?/reason
-
-alt 输入不合规
-  RC -> RV : showValidationError(reason)
-else 输入合规
-  RC -> API : checkAccountAvailability(accountId)
-  API -> IMS : checkAccountAvailability(accountId)
-  IMS -->> API : availability(available/occupied)
-  API -->> RC : availability(...)
-
-  alt 账号已存在
-    RC -> RV : showValidationError("账号已存在")
-  else 账号可用
-	    RC -> API : createAccount(accountId,password,nickname)
-	    API -> IMS : createAccount(...)
-	    IMS -->> API : accountCreated(userId)
-	    API -->> RC : created(userId)
-
-	    create UA
-	    RC -> UA : initialize(accountId, nickname)
-	    UA -->> RC : created
-	
-	    RC -> RV : showRegistrationSuccess()
-	    RC -> RV : navigateToLogin()
-	  end
-	end
-
-@enduml
-```
-
-#### 4.2.1.1 交互逻辑叙述 (Interaction Narrative)
-
-注册用况的控制流由 `RegisterController` 统一驱动。用户在 `RegisterView` 上发起“点击注册”并提交表单后，`RegisterView` 将账号、密码、确认密码与昵称作为一次完整请求调用 `RegisterController.registerAccount(...)`，从而把界面事件与用况流程解耦。
-
-`RegisterController` 首先在控制层完成输入校验（时序图中以 `validateRegistrationInput(...)` 的自调用体现）：若校验失败，控制器立即回到 `RegisterView` 触发 `showValidationError(reason)`，流程在界面层结束，不产生对外部系统的副作用。若本地校验通过，控制器再通过系统边界 `MessageServerAPI` 发起 `checkAccountAvailability(accountId)`，由边界对象与外部 `IMServer` 完成占用检查并返回结果。
-
-占用检查结果返回后，控制器根据业务分支继续控制：账号已存在则回到 `RegisterView` 给出明确错误提示；账号可用则继续通过 `MessageServerAPI.createAccount(...)` 发起创建账号请求。只有当外部系统确认创建成功后，控制器才在系统内部创建并初始化 `UserAccount` 实体（`create UA`、`UA.initialize(...)`），把注册结果固化为可识别的领域对象，随后驱动 `RegisterView` 展示成功并导航到登录界面，完成用况闭环。
-
-### 4.2.2 UC-02：登录系统（Login）
-
-#### （A）认证阶段（简图）
-
-```plantuml
-@startuml SD_UC02_Login_Auth
-title UC-02 登录系统（Login）— 认证阶段
-autonumber
-
-!pragma teoz true
-skinparam monochrome true
-skinparam shadowing false
-skinparam maxMessageSize 42
-skinparam sequenceMessageAlign left
-hide footbox
-
-actor "用户\nUser" as U
-participant "登录界面\nLoginView" as LV <<boundary>>
-participant "登录控制器\nLoginController" as LC <<control>>
-participant "消息服务接口\nMessageServerAPI" as API <<boundary>>
-actor "IM 服务\nIMServer" as IMS
-
-U -> LV : 输入账号/密码
-U -> LV : 点击“登录”
-LV -> LC : login(accountId,password)
-
-LC -> API : authenticate(accountId,password)
-API -> IMS : authenticate(...)
-IMS -->> API : authResult(success, token, profile, expiry)
-API -->> LC : authResult(...)
-
-alt 认证失败
-  LC -> LV : showLoginError(reason)
-else 认证成功
-  LC -> LV : navigateToMain()
-end
-
-@enduml
-```
-
-##### 交互逻辑叙述：认证阶段
-
-认证阶段的目标是判定凭证有效性并获取后续初始化所需的会话数据。用户在 `LoginView` 输入账号与密码并点击登录后，`LoginView` 将凭证提交给 `LoginController.login(...)`。控制器不直接与外部服务交互，而是通过边界对象 `MessageServerAPI.authenticate(...)` 请求外部 `IMServer` 完成认证，返回 `authResult(success, token, profile, expiry)`。
-
-若认证失败，控制流由 `LoginController` 回到 `LoginView` 执行 `showLoginError(reason)`，用况在“留在登录界面并提示原因”处结束。若认证成功，控制器触发 `LoginView.navigateToMain()` 进入下一阶段；此处的“进入主界面”并不等同于系统已可用运行态，真正的连接建立、同步与落库在后续“初始化阶段”完成。
-
-#### （B）初始化与进入主界面（细化）
-
-```plantuml
-@startuml SD_UC02_Login_Init
-title UC-02 登录系统（Login）— 初始化与进入主界面
-autonumber
-
-!pragma teoz true
-skinparam monochrome true
-skinparam shadowing false
-skinparam maxMessageSize 42
-skinparam sequenceMessageAlign left
-hide footbox
-
-participant "登录控制器\nLoginController" as LC <<control>>
-participant "用户会话\nUserSession" as Session <<entity>>
-participant "连接管理\nConnectionManager" as Conn <<control>>
-participant "消息服务接口\nMessageServerAPI" as API <<boundary>>
-actor "IM 服务\nIMServer" as IMS
-participant "本地存储\nMessageStore" as Store <<boundary>>
-participant "主界面\nMainWindow" as MW <<boundary>>
-
-LC -> Session : initialize(token,expiry,profile)
-Session -->> LC : ready
-
-LC -> Conn : connect(token)
-Conn -> API : establishConnection(token)
-API -> IMS : establishConnection(token)
-IMS -->> API : connected
-API -->> Conn : connected
-Conn -->> LC : connectionReady
-
-LC -> API : requestInitialSync(token)
-API -> IMS : requestInitialSync(token)
-IMS -->> API : syncData(conversations,offlineMessages)
-API -->> LC : syncData(...)
-
-LC -> Store : saveSyncData(conversations,offlineMessages)
-Store -->> LC : ok
-
-LC -> MW : showHome(conversations)
-MW -->> LC : displayed
-
-@enduml
-```
-
-##### 交互逻辑叙述：初始化与进入主界面
-
-初始化阶段由 `LoginController` 承接认证阶段返回的数据（token、expiry、profile），将“登录成功”转化为系统内部可操作的运行态。首先，控制器初始化 `UserSession` 实体（`Session.initialize(token,expiry,profile)`），使会话令牌、过期时间与用户资料具备明确的数据归属；`UserSession` 同时为后续连接状态管理提供载体。
-
-随后，控制器将“建立实时通道”的横切职责委派给 `ConnectionManager.connect(token)`。连接管理器通过 `MessageServerAPI.establishConnection(token)` 与外部 `IMServer` 建立连接并等待确认，连接成功后以 `connectionReady` 的形式回告控制器，确保后续同步建立在稳定连接之上。
-
-连接就绪后，`LoginController` 通过 `MessageServerAPI.requestInitialSync(token)` 请求初始同步数据（会话列表与离线消息）。同步数据返回后，控制器调用 `MessageStore.saveSyncData(conversations,offlineMessages)` 将关键业务数据落入本地持久化资源，保证主界面的展示与后续查询不依赖瞬时网络结果。最后，控制器驱动 `MainWindow.showHome(conversations)` 展示主界面并呈现会话列表，完成“从认证到可用主界面”的登录闭环。
-
-### 4.2.3 UC-03：即时通讯（聊天）
-
-```plantuml
-@startuml SD_UC03_Chat
-title UC-03 即时通讯（聊天）— 基本流 + A1/A2 + E1/E2
-autonumber
-
-!pragma teoz true
-skinparam monochrome true
-skinparam shadowing false
-skinparam maxMessageSize 46
-skinparam sequenceMessageAlign left
-hide footbox
-
-actor "用户\nUser" as U
-participant "会话列表\nConversationListView" as CLV <<boundary>>
-participant "聊天窗口\nChatWindow" as CW <<boundary>>
-participant "聊天控制器\nChatController" as CC <<control>>
-participant "本地存储\nMessageStore" as Store <<boundary>>
-participant "消息服务接口\nMessageServerAPI" as API <<boundary>>
-actor "IM 服务\nIMServer" as IMS
-
-== 进入会话 ==
-U -> CLV : selectSession(sessionId)
-CLV -> CC : openConversation(sessionId)
-CC -> Store : loadRecentHistory(sessionId)
-Store -->> CC : messages
-CC -> CW : displayHistory(messages)
-
-== 编辑与发送 ==
-U -> CW : submitText(content)
-CW -> CC : submitMessage(sessionId,content)
-
-alt E1 内容为空
-  CC -> CW : showEmptyWarning()
-else 内容有效
-  CC -> Store : saveOutgoing(message)
-  Store -->> CC : saved(message)
-  CC -> CW : appendOutgoing(message, Sending)
-
-  CC -> API : sendMessage(message)
-  API -> IMS : deliverMessage(...)
-
-  alt 收到 Server-ACK
-    IMS -->> API : serverAck(messageId)
-    API -->> CC : onAckReceived(messageId)
-
-    CC -> Store : updateDeliveryStatus(messageId, Delivered)
-    Store -->> CC : updated
-    CC -> CW : updateDeliveryStatus(messageId, Delivered)
-  else E2 网络异常/超时
-    API -->> CC : onSendFailed(messageId, reason)
-
-    CC -> Store : updateDeliveryStatus(messageId, Failed)
-    Store -->> CC : updated
-    CC -> CW : updateDeliveryStatus(messageId, Failed)
-
-    U -> CW : 点击重试(messageId)
-    CW -> CC : retrySend(messageId)
-
-    CC -> Store : loadMessage(messageId)
-    Store -->> CC : message
-    CC -> API : sendMessage(message)
-    API -> IMS : deliverMessage(...)
-
-    IMS -->> API : serverAck(messageId)
-    API -->> CC : onAckReceived(messageId)
-
-    CC -> Store : updateDeliveryStatus(messageId, Delivered)
-    Store -->> CC : updated
-    CC -> CW : updateDeliveryStatus(messageId, Delivered)
-  end
-end
-
-== 接收消息 ==
-IMS -> API : pushIncomingMessage(payload)
-API -> CC : receiveIncoming(message)
-
-CC -> Store : saveIncoming(message)
-Store -->> CC : saved(message)
-
-alt 当前会话处于打开状态
-  CC -> CW : appendIncoming(message)
-else A1 来自其他会话的新消息
-  CC -> CLV : promoteSession(sessionId)
-  CC -> CLV : updateUnread(sessionId, unreadCount+1)
-end
-
-== A2 查看历史消息 ==
-U -> CW : 向上滚动(beforeMessageId)
-CW -> CC : requestOlderHistory(sessionId, beforeMessageId)
-
-CC -> Store : loadOlderHistory(sessionId, beforeMessageId)
-Store -->> CC : olderMessages(found/empty)
-
-alt 本地命中
-  CC -> CW : prependHistory(olderMessages)
-else 本地不足/需要服务端补齐
-  CC -> API : requestHistory(sessionId, beforeMessageId)
-  API -> IMS : requestHistory(...)
-  IMS -->> API : historyPage(messages)
-  API -->> CC : historyPage(messages)
-
-  CC -> Store : saveHistory(historyPage)
-  Store -->> CC : saved
-  CC -> CW : prependHistory(historyPage)
-end
-
-@enduml
-```
-
-#### 4.2.3.1 交互逻辑叙述 (Interaction Narrative)
-
-聊天用况的控制核心是 `ChatController`。它一方面接收来自界面组件（`ConversationListView`、`ChatWindow`）的用户意图，另一方面接收来自系统边界（`MessageServerAPI`）的异步事件（新消息推送、ACK、发送失败），并通过 `MessageStore` 保障本地数据一致性与可回看性，从而把“即时性”与“可靠性”统一在同一条控制流上。
-
-在“进入会话”阶段，用户从 `ConversationListView` 选择会话后，边界对象把 `sessionId` 交给 `ChatController.openConversation(sessionId)`。控制器随即通过 `MessageStore.loadRecentHistory(sessionId)` 获取最近消息集合，并将结果提交给 `ChatWindow.displayHistory(messages)` 完成展示。该路径强调“控制器编排、存储提供数据、界面负责呈现”的分工，避免界面直接访问持久化资源导致耦合与一致性问题。
-
-在“编辑与发送”阶段，用户在 `ChatWindow` 提交输入内容后，`ChatWindow` 以 `submitMessage(sessionId, content)` 将意图交给 `ChatController`。控制器首先进行用况级有效性判断：内容为空则直接回到界面执行 `showEmptyWarning()`（异常流 E1），流程终止在界面层且不产生外部副作用。内容有效时，控制器先调用 `MessageStore.saveOutgoing(message)` 完成“先落库”，并立即驱动界面 `appendOutgoing(message, Sending)` 呈现“发送中”，使用户获得即时反馈；随后控制器通过 `MessageServerAPI.sendMessage(message)` 向外部 `IMServer` 投递消息。
-
-投递结果以异步事件形式返回：当服务端 ACK 到达（`serverAck(messageId)`）时，`MessageServerAPI` 回调 `ChatController.onAckReceived(messageId)`，控制器据此将本地存储中的消息状态更新为 `Delivered`（`updateDeliveryStatus(...)`），并同步更新界面展示（`ChatWindow.updateDeliveryStatus(...)`），完成“发送中→已送达”的状态闭环。若出现网络异常或超时（异常流 E2），`MessageServerAPI` 回调 `ChatController.onSendFailed(messageId, reason)`，控制器将状态更新为 `Failed` 并刷新界面；用户触发重试时，控制器通过 `MessageStore.loadMessage(messageId)` 取回同一条消息对象再次调用 `sendMessage(...)`，在 ACK 后回收状态为 `Delivered`，以保证重试过程可追踪、可去重且对用户可理解。
-
-在“接收消息”阶段，外部 `IMServer` 推送新消息到 `MessageServerAPI`，边界对象将消息交付给 `ChatController.receiveIncoming(message)`。控制器先执行 `MessageStore.saveIncoming(message)` 以保证消息落库与可回看，然后根据当前界面上下文分流：若当前会话处于打开状态则直接驱动 `ChatWindow.appendIncoming(message)`；若来自其他会话（备选流 A1），则通过 `ConversationListView.promoteSession(sessionId)` 与 `updateUnread(...)` 更新列表排序与未读计数，实现“不中断当前对话但不遗漏提醒”。
-
-在“查看历史消息”阶段（备选流 A2），用户上滚触发 `ChatWindow` 向控制器发出 `requestOlderHistory(sessionId, beforeMessageId)`。控制器优先通过 `MessageStore.loadOlderHistory(...)` 获取本地历史：本地命中则直接 `prependHistory(olderMessages)`；本地不足时，通过 `MessageServerAPI.requestHistory(...)` 请求服务端历史页，返回后先 `saveHistory(...)` 再 `prependHistory(...)`。该“先存后显”的顺序确保历史分页与后续检索/状态更新都建立在一致的本地数据上。
-
----
-
-## 4.3 静态分析模型（Analysis Class Diagram）
-
-### 4.3.1 总体概览图（Level 1）
-
-```plantuml
-@startuml Analysis_Class_L1_Overview
-title 静态分析模型（Level 1）— 总体概览
-
-top to bottom direction
-skinparam monochrome true
-skinparam shadowing false
-skinparam linetype ortho
-skinparam packageStyle rectangle
-skinparam classAttributeIconSize 0
-hide methods
-hide fields
-
-package "Boundary" as PBoundary {
-  class RegisterView <<boundary>>
-  class LoginView <<boundary>>
-  class MainWindow <<boundary>>
-  class ConversationListView <<boundary>>
-  class ChatWindow <<boundary>>
-  class MessageStore <<boundary>>
-  class MessageServerAPI <<boundary>>
-
-  RegisterView -[hidden]-> LoginView
-  LoginView -[hidden]-> MainWindow
-  MainWindow -[hidden]-> ConversationListView
-  ConversationListView -[hidden]-> ChatWindow
-  ChatWindow -[hidden]-> MessageStore
-  MessageStore -[hidden]-> MessageServerAPI
-}
-
-package "Control" as PControl {
-  class RegisterController <<control>>
-  class LoginController <<control>>
-  class ConnectionManager <<control>>
-  class ChatController <<control>>
-
-  RegisterController -[hidden]-> LoginController
-  LoginController -[hidden]-> ConnectionManager
-  ConnectionManager -[hidden]-> ChatController
-}
-
-package "Entity" as PEntity {
-  class UserAccount <<entity>>
-  class UserSession <<entity>>
-  class ChatSession <<entity>>
-  class Message <<entity>>
-
-  UserAccount -[hidden]-> UserSession
-  UserSession -[hidden]-> ChatSession
-  ChatSession -[hidden]-> Message
-}
-
-' 强制三层垂直分布（长图优于宽图）
-PBoundary -[hidden]-> PControl
-PControl -[hidden]-> PEntity
-
-RegisterView --> RegisterController
-LoginView --> LoginController
-LoginController --> MainWindow : navigation
-ConversationListView --> ChatController
-ChatWindow --> ChatController
-
-RegisterController --> UserAccount
-RegisterController --> MessageServerAPI
-
-LoginController --> UserSession
-LoginController --> ConnectionManager
-LoginController --> MessageStore
-LoginController --> MessageServerAPI
-
-ConnectionManager --> MessageServerAPI
-
-ChatController --> ChatSession
-ChatController --> Message
-ChatController --> MessageStore
-ChatController --> MessageServerAPI
-
-UserAccount "1" <-- "0..1" UserSession : currentUser
-UserSession "1" o-- "0..*" ChatSession : accessibleSessions
-ChatSession "1" *-- "0..*" Message : contains
-
-@enduml
-```
-
-### 4.3.2 详细子图（Level 2）：Boundary / Control
-
-```plantuml
-@startuml Analysis_Class_L2_Boundary_Control
-title 静态分析模型（Level 2）— Boundary / Control
-
-top to bottom direction
-skinparam monochrome true
-skinparam shadowing false
-skinparam linetype ortho
-skinparam packageStyle rectangle
-skinparam classAttributeIconSize 0
-hide fields
-
-package "Boundary" as BoundaryPkg {
-  class RegisterView <<boundary>> {
-    +submitRegistration(accountId, password, confirmPassword, nickname)
-    +showValidationError(reason)
-    +showRegistrationSuccess()
-    +navigateToLogin()
-  }
-
-  class LoginView <<boundary>> {
-    +submitLogin(accountId, password)
-    +showLoginError(reason)
-    +navigateToMain()
-  }
-
-  class MainWindow <<boundary>> {
-    +showHome(conversations)
-    +openChat(sessionId)
-  }
-
-  class ConversationListView <<boundary>> {
-    +selectSession(sessionId)
-    +promoteSession(sessionId)
-    +updateUnread(sessionId, unreadCount)
-  }
-
-  class ChatWindow <<boundary>> {
-    +displayHistory(messages)
-    +submitText(content)
-    +appendOutgoing(message, status)
-    +appendIncoming(message)
-    +updateDeliveryStatus(messageId, status)
-    +prependHistory(messages)
-    +showEmptyWarning()
-  }
-
-  class MessageStore <<boundary>> {
-    +saveOutgoing(message)
-    +saveIncoming(message)
-    +saveHistory(messages)
-    +loadMessage(messageId)
-    +loadRecentHistory(sessionId)
-    +loadOlderHistory(sessionId, beforeMessageId)
-    +updateDeliveryStatus(messageId, status)
-    +saveSyncData(conversations, offlineMessages)
-  }
-
-  class MessageServerAPI <<boundary>> {
-    +authenticate(accountId, password)
-    +checkAccountAvailability(accountId)
-    +createAccount(accountId, password, nickname)
-    +establishConnection(sessionToken)
-    +sendMessage(message)
-    +requestInitialSync(sessionToken)
-    +requestHistory(sessionId, beforeMessageId)
-  }
-
-  RegisterView -[hidden]-> LoginView
-  LoginView -[hidden]-> MainWindow
-  MainWindow -[hidden]-> ConversationListView
-  ConversationListView -[hidden]-> ChatWindow
-  ChatWindow -[hidden]-> MessageStore
-  MessageStore -[hidden]-> MessageServerAPI
-}
-
-package "Control" as ControlPkg {
-  class RegisterController <<control>> {
-    +registerAccount(accountId, password, confirmPassword, nickname)
-    +validateRegistrationInput(...)
-    +checkAccountAvailability(accountId)
-  }
-
-  class LoginController <<control>> {
-    +login(accountId, password)
-    +initializeUserData()
-    +enterMainWindow()
-  }
-
-  class ConnectionManager <<control>> {
-    +connect(sessionToken)
-    +maintainConnection()
-  }
-
-  class ChatController <<control>> {
-    +openConversation(sessionId)
-    +submitMessage(sessionId, content)
-    +retrySend(messageId)
-    +receiveIncoming(message)
-    +onAckReceived(messageId)
-    +onSendFailed(messageId, reason)
-    +requestOlderHistory(sessionId, beforeMessageId)
-  }
-
-  RegisterController -[hidden]-> LoginController
-  LoginController -[hidden]-> ConnectionManager
-  ConnectionManager -[hidden]-> ChatController
-}
-
-BoundaryPkg -[hidden]-> ControlPkg
-
-RegisterView --> RegisterController
-RegisterController --> MessageServerAPI
-LoginView --> LoginController
-LoginController --> MessageStore
-LoginController --> ConnectionManager
-LoginController --> MessageServerAPI
-LoginController --> MainWindow
-
-ConversationListView --> ChatController
-ChatWindow --> ChatController
-ChatController --> MessageStore
-ChatController --> MessageServerAPI
-
-ConnectionManager --> MessageServerAPI
-MessageServerAPI --> ChatController : callbacks
-
-@enduml
-```
-
-### 4.3.3 详细子图（Level 2）：Entity / Relationship
-
-```plantuml
-@startuml Analysis_Class_L2_Entity
-title 静态分析模型（Level 2）— Entity / Relationship
-
-top to bottom direction
-skinparam monochrome true
-skinparam shadowing false
-skinparam linetype ortho
-skinparam packageStyle rectangle
-skinparam classAttributeIconSize 0
-
-package "Entity" as EntityPkg {
-  class UserAccount <<entity>> {
-    +accountId : String
-    +nickname : String
-    +initialize(accountId, nickname)
-  }
-
-  class UserSession <<entity>> {
-    +sessionToken : String
-    +expiresAt : DateTime
-    +connectionState : ConnectionState
-    +initialize(sessionToken, expiresAt, profile)
-  }
-
-  class ChatSession <<entity>> {
-    +sessionId : String
-    +type : SessionType
-    +unreadCount : int
-    +incrementUnread()
-    +resetUnread()
-  }
-
-  class Message <<entity>> {
-    +messageId : String
-    +content : String
-    +type : MessageType
-    +createdAt : DateTime
-    +deliveryStatus : DeliveryStatus
-    +markSending()
-    +markDelivered()
-    +markFailed(reason)
-  }
-
-  enum DeliveryStatus {
-    Sending
-    Delivered
-    Failed
-    Read
-  }
-
-  enum MessageType {
-    Text
-    Image
-    Voice
-    Emoji
-    File
-  }
-
-  enum SessionType {
-    Private
-    Group
-  }
-
-  enum ConnectionState {
-    Disconnected
-    Connecting
-    Connected
-    Reconnecting
-  }
-}
-
-' 让同层元素纵向排列，避免横向过宽
-UserAccount -[hidden]-> UserSession
-UserSession -[hidden]-> ChatSession
-ChatSession -[hidden]-> Message
-
-DeliveryStatus -[hidden]-> MessageType
-MessageType -[hidden]-> SessionType
-SessionType -[hidden]-> ConnectionState
-
-UserAccount "1" <-- "0..1" UserSession : currentUser
-UserSession "1" o-- "0..*" ChatSession : accessibleSessions
-ChatSession "1" *-- "0..*" Message : contains
-UserAccount "0..*" -- "2..*" ChatSession : participates
-
-UserSession --> ConnectionState
-ChatSession --> SessionType
-Message --> MessageType
-Message --> DeliveryStatus
-
-@enduml
-```
-
-### 4.3.4 静态结构解析 (Static Structure Rationale)
-
-#### 4.3.4.1 关联关系与多重性（Relationships & Multiplicity）
-
-1. **三层分工的主链路：Boundary → Control →（Boundary/Entity）**  
-在 Level 1/Level 2 图中，界面边界（如 `RegisterView`、`LoginView`、`ConversationListView`、`ChatWindow`）以依赖方式指向控制类（`RegisterController`、`LoginController`、`ChatController`）。这种结构把用况步骤与分支集中在控制层，界面层保持“采集意图 + 展示结果”的被动特征，降低 UI 复杂度并提升一致性。控制类再分别访问两类边界：对外部系统的 `MessageServerAPI` 与对本地持久化资源的 `MessageStore`，从而在分析层清晰区分“业务编排”与“资源访问”。  
-
-2. **`MessageServerAPI` → `ChatController` 的回调依赖**  
-类图中 `MessageServerAPI --> ChatController : callbacks` 用于表达即时通讯的异步特性：新消息推送、ACK 回执、发送失败并非由用户同步触发。将回调落点设置为 `ChatController`，意味着所有异步事件都进入同一控制点统一处理（落库、更新界面、更新未读/排序），避免边界对象直接操作实体导致跨层耦合与一致性缺口。  
-
-3. **`UserAccount` 与 `UserSession`（`UserAccount "1" <-- "0..1" UserSession`）**  
-该多重性表达“账号”与“会话运行态”的解耦：在客户端语境下，账号可能存在但未登录，因此会话对账号的关联为 `0..1`；一旦存在会话，则该会话必须指向且仅指向一个当前用户（`UserAccount "1"`）。这种设计便于表达“未登录/已登录”的状态切换，也为后续支持登出、会话过期与重新登录预留结构空间。  
-
-4. **`UserSession` 聚合可访问会话（`UserSession "1" o-- "0..*" ChatSession`）**  
-登录会话作为当前运行上下文，可访问多个对话（私聊/群聊）。用聚合（`o--`）强调“会话列表属于当前会话上下文的组织结果”，并不强制 `ChatSession` 的生命周期必须跟随 `UserSession` 一同销毁；这符合即时通讯中“对话可长期存在、但访问需要登录态”的业务事实。  
-
-5. **`ChatSession` 组合消息集合（`ChatSession "1" *-- "0..*" Message`）**  
-消息必须归属某个会话，其展示、分页与未读计算都以会话为语境；因此采用组合（`*--`）强调消息与会话上下文的强归属关系。在分析层这等价于：如果一个会话被移除，其消息集合在业务上也失去归属与可见性。  
-
-6. **参与关系与最低参与者约束（`UserAccount "0..*" -- "2..*" ChatSession`）**  
-一个用户可参与多个会话（`0..*`），而一个会话至少包含两名参与者（私聊 2 人，群聊大于 2 人），因此会话侧采用 `2..*`。该约束直接支撑“私聊/群聊”的统一抽象，也为后续成员管理、权限边界提供结构基础。  
-
-7. **实体到枚举的依赖（Entity → Enum）**  
-`UserSession → ConnectionState`、`ChatSession → SessionType`、`Message → MessageType/DeliveryStatus` 明确了关键状态与分类的取值域，避免在控制逻辑中散落硬编码常量，使状态迁移（如 `markDelivered()`）在语义层保持一致且可验证。  
-
-#### 4.3.4.2 主要实体类核心属性与业务信息映射
-
-| 实体类 | 核心属性 | 业务含义 | 对应的用况/业务信息 |
-| --- | --- | --- | --- |
-| `UserAccount` | `accountId: String` | 用户账号标识（手机号/邮箱等） | UC-01 注册表单“账号”；UC-02 登录凭证“账号” |
-| `UserAccount` | `nickname: String` | 用户展示名 | UC-01 注册表单“昵称” |
-| `UserSession` | `sessionToken: String` | 登录成功后的会话令牌，用于建立连接与鉴权调用 | UC-02 认证阶段返回 `token`；初始化阶段用其 `connect(...)` 与 `requestInitialSync(...)` |
-| `UserSession` | `expiresAt: DateTime` | 会话过期时间，用于判定会话是否仍有效 | UC-02 认证阶段返回 `expiry`；用于会话生命周期管理（超时/重新登录） |
-| `UserSession` | `connectionState: ConnectionState` | 连接状态（未连接/连接中/已连接/重连中） | UC-02 初始化阶段建立连接；UC-03 前置条件“网络连接状态正常”与弱网重连诉求 |
-| `ChatSession` | `sessionId: String` | 会话标识（对话入口与消息归属） | UC-03 进入会话选择 `sessionId`；历史查询按 `sessionId` 分页 |
-| `ChatSession` | `type: SessionType` | 私聊/群聊区分 | 产品特性“私聊/群聊”；UC-03 前置条件包含好友或群组 |
-| `ChatSession` | `unreadCount: int` | 未读计数，用于列表提示与会话排序 | UC-03 备选流 A1：未读提示与会话置顶/提升 |
-| `Message` | `messageId: String` | 消息唯一标识，支撑 ACK、重试与去重 | UC-03 Server-ACK 更新状态；异常流 E2 重试发送依赖 `messageId` |
-| `Message` | `content: String` | 消息内容载体 | UC-03 基本流：提交文本内容并发送 |
-| `Message` | `type: MessageType` | 消息类型（文本/图片/语音/表情/文件） | 业务需求：多模态消息；展示与处理需按类型分流 |
-| `Message` | `createdAt: DateTime` | 消息产生时间，用于排序与历史浏览 | UC-03 查看历史消息分页与时间线展示 |
-| `Message` | `deliveryStatus: DeliveryStatus` | 投递状态（Sending/Delivered/Failed/Read） | UC-03 基本流：发送中→已送达；异常流 E2：发送失败；可扩展到已读 |
 
 # 第5章 架构设计
 
+本章在需求分析模型的基础上，定义 ShirohaChat 的高层系统架构。我们采用 C/S（客户端-服务器）架构结合分层模式 (Layered Pattern)，以满足"端到端延迟 ≤ 200ms"和"消息零丢失"的非功能性需求。
 
+## 5.1 逻辑架构设计 (Logical Architecture)
+
+为了实现"高内聚、低耦合"，我们将系统划分为四个逻辑层。这种分层设计确保了 UI 的变更不会影响核心业务逻辑，且网络协议的替换不会破坏数据模型。
+
+### 5.1.1 逻辑分层包图 (Package Diagram)
+
+我们将类划分为：表现层、控制层、领域层和基础设施层。
+
+[图 5-1 逻辑分层包图 - 待补充]
+
+### 5.1.2 各层职责说明
+
+1. **表现层 (Presentation)**：
+   - 包含 ChatWindow 等边界类。
+   - 职责：仅负责显示数据（如消息气泡、红点）和捕获用户输入。严禁包含复杂的业务判断逻辑。
+
+2. **控制层 (Control)**：
+   - 包含 ChatController。
+   - 职责：应用的核心枢纽。它接收 UI 的请求，验证数据，决定是先存库还是先发送，并控制 UI 的状态流转（如从"发送中"变更为"已送达"）。
+
+3. **领域层 (Domain)**：
+   - 包含 Message, User 实体。
+   - 职责：定义数据的结构和纯粹的业务规则（如"消息不能为空"）。它不依赖任何 UI 或网络库，是最稳定的部分。
+
+4. **基础设施层 (Infrastructure)**：
+   - 包含 NetworkService 和 LocalDB。
+   - 职责：封装具体的技术实现。例如，如果未来将 WebSocket 换成 TCP Socket，只需修改此层，上层业务无需变动。
+
+## 5.2 物理部署架构
+
+### 5.2.1 部署说明
+
+- **客户端**：运行在用户 PC 上的富客户端程序，内嵌 SQLite 数据库用于离线存储历史记录。
+- **通信协议**：使用 WebSocket 协议建立全双工长连接，确保服务器能主动推送新消息（即时性保障）。
+
+## 5.3 并发与线程设计 (Concurrency Design)
+
+为了保证 UI 响应流畅度（< 50ms），必须将耗时操作从主线程剥离。我们采用"主线程 + 工作线程"模型。
+
+1. **UI 主线程 (Main Thread)**：
+   - 职责：仅负责界面绘制、动画渲染和响应鼠标点击。
+   - 约束：严禁执行任何阻塞操作（如网络 IO、大文件读写），否则会导致界面"假死"。
+
+2. **网络工作线程 (Network Worker)**：
+   - 职责：维护 WebSocket 连接的心跳，序列化/反序列化 JSON 数据。
+   - 交互：收到消息后，通过信号/槽 (Signal/Slot) 机制或回调函数，将数据安全地传递给 UI 线程进行显示。
+
+3. **IO 工作线程 (DB Worker)**：
+   - 职责：执行 SQLite 的 insert/query 操作。
+   - 策略：采用异步写入队列，防止磁盘 IO 阻塞消息发送流程。
+
+## 5.4 关键设计模式 (Design Patterns)
+
+根据教材第12章，我们在架构中应用以下模式以解决特定问题：
+
+### 5.4.1 观察者模式 (Observer Pattern)
+
+- **问题**：当收到新消息时，如何通知聊天窗口、会话列表、任务栏同时更新，且不造成强耦合？
+- **方案**：ChatController 作为主题 (Subject)，UI 组件作为观察者 (Observer)。当 Controller 收到消息时，广播事件，所有订阅的 UI 自动刷新。
+
+### 5.4.2 单例模式 (Singleton Pattern)
+
+- **问题**：系统中只能有一个网络连接实例和一个数据库连接实例。
+- **方案**：将 NetworkService 和 ChatController 设计为单例，确保全局访问点唯一，避免资源冲突。
+
+## 5.5 数据持久化策略 (Persistence Strategy)
+
+为了满足"消息零丢失"的需求，架构上采用 Write-Ahead (预写) 策略：
+
+**1. 发送时**：
+- 用户点击发送 → 立即写入本地 DB (状态: Sending) → 再发起网络请求。
+- 目的：即使网络请求瞬间程序崩溃，重启后也能从本地 DB 恢复该消息并重试。
+
+**2. 接收时**：
+- 收到网络包 → 立即写入本地 DB → 再通知 UI 显示。
+- 目的：保证用户看到的每一条消息都已落地存储，支持离线查看历史记录。
 
 ---
 
 # 第6章 详细设计
-
 
 
 ---
@@ -1199,10 +568,8 @@ Message --> DeliveryStatus
 # 后记
 
 
+
 ---
 
 # 参考文献
 
-
-
----
