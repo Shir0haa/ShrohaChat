@@ -400,7 +400,57 @@ ShirohaChat 是一款**面向大众的即时通讯系统(桌面端)**,采用前�
 
 ### 4.2.1 发送消息通信图
 
-[图 4-1 发送消息通信图 - 待补充]
+```plantuml
+@startuml
+skinparam linestyle ortho
+skinparam rectangle {
+    BackgroundColor White
+    BorderColor Black
+}
+hide members
+title 通信图：发送消息 (Send Message Scenario)
+
+actor "学生\n:Student" as Student
+
+' 定义对象（使用健壮性图标构造型）
+rectangle ":ChatWindow" as UI <<Boundary>>
+rectangle ":ChatController" as Ctrl <<Control>>
+rectangle ":Message" as Msg <<Entity>>
+rectangle ":NetworkService" as Net <<Control>>
+
+' 定义链接 (Links) - 这决定了类图中的关联
+Student -r- UI
+UI -r- Ctrl
+Ctrl -d- Msg
+Ctrl -r- Net
+
+' 定义消息流 (Messages)
+note on link
+  1: 点击发送()
+  ↓
+  6: 更新状态(Delivered)
+  ↑
+end note
+
+note on link
+  2: sendMessage(txt)
+  →
+  5: onAckReceived()
+  ←
+end note
+
+note on link
+  3: create(txt, status=Sending)
+  ↓
+end note
+
+note on link
+  4: push(msg)
+  →
+end note
+
+@enduml
+```
 
 ### 4.2.2 通信图分析与链接识别
 
@@ -417,7 +467,59 @@ ShirohaChat 是一款**面向大众的即时通讯系统(桌面端)**,采用前�
 - **链接 -> 关联**：通信图中两个对象之间有连线，类图中这两个类之间就有关联关系。
 - **消息 -> 方法**：对象 A 向 对象 B 发送消息 doSomething()，则 类 B 中必须定义方法 doSomething()
 
-[图 4-2 类图 - 待补充]
+```plantuml
+@startuml
+skinparam classAttributeIconSize 0
+hide empty members
+
+' 1. 定义类 (基于健壮性分析)
+class "ChatWindow" as UI <<Boundary>> {
+    +displayMessage(msg: Message)
+    +updateStatus(status: MsgStatus)
+}
+
+class "ChatController" as Ctrl <<Control>> {
+    +sendMessage(content: String)
+    +handleAck(msgId: String)
+    +receiveMessage(msg: Message)
+}
+
+class "NetworkService" as Net <<Control>> {
+    +push(data: Object)
+    +connect()
+}
+
+class "Message" as Msg <<Entity>> {
+    -content: String
+    -timestamp: DateTime
+    -status: MsgStatus
+    -senderId: String
+}
+
+class "Session" as Session <<Entity>> {
+    -sessionId: String
+    -chatWith: User
+}
+
+' 2. 定义关系 (基于通信图链接)
+
+' UI 调用 Controller -> 单向关联
+UI "1" --> "1" Ctrl : 委托 >
+
+' Controller 使用 Network -> 单向关联
+Ctrl "1" --> "1" Net : 使用 >
+
+' Controller 管理 Message -> 聚合/依赖
+Ctrl ..> Msg : 创建/更新 >
+
+' Controller 维护当前会话
+Ctrl "1" --> "1" Session : 维护上下文 >
+
+' Session 包含多条 Message
+Session "1" o-- "0..*" Msg : 包含 >
+
+@enduml
+```
 
 ### 4.2.4 类职责说明
 
@@ -431,6 +533,53 @@ ShirohaChat 是一款**面向大众的即时通讯系统(桌面端)**,采用前�
 
 **图 4-3 发送消息活动图** - 该图展示了消息从用户输入到最终状态更新的完整业务逻辑流
 
+```plantuml
+@startuml
+skinparam activity {
+    BackgroundColor White
+    BorderColor Black
+    ArrowColor Black
+}
+
+title 活动图：消息发送流程 (Message Sending Process)
+
+|用户 (User)|
+start
+:输入文本消息;
+:点击发送;
+
+|客户端系统 (Client)|
+:获取输入内容;
+if (内容是否有效?) then (否)
+    :显示错误提示;
+    stop
+else (是)
+    :创建消息对象 (Status=Sending);
+    :在UI显示消息气泡 (转圈);
+    :调用网络服务发送;
+endif
+
+|服务器 (Server)|
+:接收消息请求;
+if (持久化成功?) then (是)
+    :返回 ACK 确认;
+else (否)
+    :无响应或返回错误;
+endif
+
+|客户端系统 (Client)|
+if (收到 ACK?) then (是)
+    :更新消息状态 (Delivered);
+    :UI刷新为对勾图标;
+else (否/超时)
+    :更新消息状态 (Failed);
+    :UI刷新为红色感叹号;
+endif
+stop
+
+@enduml
+```
+
 **活动图说明**：
 
 - **泳道 (Swimlanes)**：将活动划分为"用户"、"客户端系统"、"服务器"三个责任区，明确了职责边界。
@@ -441,6 +590,65 @@ ShirohaChat 是一款**面向大众的即时通讯系统(桌面端)**,采用前�
 ### 4.3.2 顺序图
 
 **图 4-4 消息发送与ACK机制顺序图** - 该图依据 UML 2.2 规范，展示了边界对象、控制对象与实体对象之间的时间序列交互。
+
+```plantuml
+@startuml
+skinparam sequenceMessageAlign center
+autonumber
+
+actor "用户" as User
+participant ":ChatWindow" as UI <<Boundary>>
+participant ":ChatController" as Ctrl <<Control>>
+participant ":Message" as Msg <<Entity>>
+participant ":NetworkService" as Net <<Control>>
+participant "Server" as Svr <<External>>
+
+User -> UI : 1: 点击发送
+activate UI
+
+UI -> Ctrl : 2: sendMessage(text)
+activate Ctrl
+
+' 创建实体
+Ctrl -> Msg ** : 3: create(text)
+activate Msg
+Msg --> Ctrl : msgInstance
+deactivate Msg
+
+' 设置初始状态
+Ctrl -> Msg : 4: setStatus(SENDING)
+activate Msg
+deactivate Msg
+
+' UI反馈
+Ctrl --> UI : 5: display(msgInstance)
+UI -> User : 显示转圈图标
+
+' 网络发送
+Ctrl -> Net : 6: push(msgInstance)
+activate Net
+Net -> Svr : 7: Transmit Packet
+activate Svr
+Svr -->> Net : 8: ACK (Success)
+deactivate Svr
+
+' 处理回调
+Net -> Ctrl : 9: onAckReceived(msgId)
+deactivate Net
+
+' 更新状态
+Ctrl -> Msg : 10: setStatus(DELIVERED)
+activate Msg
+deactivate Msg
+
+' 刷新UI
+Ctrl --> UI : 11: refreshStatus(msgId)
+deactivate Ctrl
+UI -> User : 显示对勾图标
+deactivate UI
+
+@enduml
+```
 
 **顺序图说明**：
 
@@ -454,6 +662,30 @@ ShirohaChat 是一款**面向大众的即时通讯系统(桌面端)**,采用前�
 ### 4.3.3 状态机图
 
 **图 4-5 消息实体状态机图** - 根据项目"高可靠性"的需求，Message 对象不仅是数据容器，还是一个具有复杂生命周期的状态机。
+
+```plantuml
+@startuml
+scale 600 width
+hide empty description
+
+title 状态机图：消息生命周期 (Message Lifecycle)
+
+[*] --> Created : 控制器创建消息
+
+state "Created (已创建)" as Created
+state "Sending (发送中)" as Sending : entry / 显示转圈\nentry / 启动超时计时器
+state "Delivered (已送达)" as Delivered : entry / 显示对勾
+state "Failed (发送失败)" as Failed : entry / 显示感叹号\nentry / 允许手动重试
+
+Created --> Sending : 用户触发发送
+Sending --> Delivered : [事件: 收到ACK]
+Sending --> Failed : [事件: 网络超时 > 3s]
+Failed --> Sending : [事件: 用户点击重试]
+
+Delivered --> [*]
+
+@enduml
+```
 
 **状态机图说明**：
 
@@ -489,7 +721,47 @@ ShirohaChat 是一款**面向大众的即时通讯系统(桌面端)**,采用前�
 
 我们将类划分为：表现层、控制层、领域层和基础设施层。
 
-[图 5-1 逻辑分层包图 - 待补充]
+```plantuml
+@startuml
+skinparam packageStyle rectangle
+skinparam linetype ortho
+
+package "表现层 (Presentation Layer)" {
+    [ChatWindow]
+    [SessionList]
+    note right: 负责界面渲染与用户交互\n(Qt/QML)
+}
+
+package "控制层 (Control Layer)" {
+    [ChatController]
+    note right: 系统的"大脑"\n协调UI、数据与网络
+}
+
+package "领域层 (Domain Layer)" {
+    [Message]
+    [User]
+    [Session]
+    note right: 核心业务实体\n(POJO/Data Classes)
+}
+
+package "基础设施层 (Infrastructure Layer)" {
+    [NetworkService]
+    [LocalDB]
+    note right: 底层技术实现\n(WebSocket / SQLite)
+}
+
+' 定义依赖关系 (遵循依赖倒置或单向依赖)
+[ChatWindow] ..> [ChatController] : 委托操作
+[ChatController] ..> [Message] : 操作数据
+[ChatController] ..> [NetworkService] : 调用发送
+[ChatController] ..> [LocalDB] : 调用存储
+
+' 基础设施层通常依赖领域实体进行序列化/存储
+[NetworkService] ..> [Message] : 传输
+[LocalDB] ..> [Message] : 持久化
+
+@enduml
+```
 
 ### 5.1.2 各层职责说明
 
@@ -515,6 +787,33 @@ ShirohaChat 是一款**面向大众的即时通讯系统(桌面端)**,采用前�
 
 - **客户端**：运行在用户 PC 上的富客户端程序，内嵌 SQLite 数据库用于离线存储历史记录。
 - **通信协议**：使用 WebSocket 协议建立全双工长连接，确保服务器能主动推送新消息（即时性保障）。
+
+```plantuml
+@startuml
+skinparam componentStyle uml2
+
+node "客户端计算机 (Client PC)" as ClientNode {
+    artifact "ShirohaChat Client" as App {
+        component "UI Module"
+        component "Logic Core"
+        component "SQLite DB"
+    }
+}
+
+node "消息服务器 (Message Server)" as ServerNode {
+    artifact "IM Backend Service"
+}
+
+' 连接关系
+ClientNode -- ServerNode : WebSocket (WSS)\nPort 443
+
+note on link
+  全双工长连接
+  JSON 数据包
+end note
+
+@enduml
+```
 
 ## 5.3 并发与线程设计 (Concurrency Design)
 
@@ -562,6 +861,778 @@ ShirohaChat 是一款**面向大众的即时通讯系统(桌面端)**,采用前�
 
 # 第6章 详细设计
 
+本章基于第4章需求分析识别的分析类和第5章架构设计的分层模型，针对C++20面向对象设计 + QML前端技术栈，进行类级别的详细设计。
+
+## 6.1 技术栈说明
+
+### 6.1.1 核心技术选型
+
+- **后端/核心**：C++20 + Qt 6.x
+  - 采用面向对象设计（OOAD）
+  - 使用现代C++特性（智能指针、移动语义、RAII）
+  - Qt框架用于网络、线程、数据库支持
+
+- **前端**：QML + Qt Quick
+  - 声明式UI描述
+  - MVVM架构模式
+  - C++与QML通过Qt元对象系统交互
+
+### 6.1.2 模块边界
+
+根据第5章架构设计的分层模式，模块职责划分如下：
+
+| 层次 | 实现语言 | 职责 | 关键类 |
+|------|----------|------|--------|
+| 表现层 | QML | UI渲染、用户交互 | ChatWindow.qml, SessionList.qml |
+| 控制层 | C++ | 业务逻辑协调 | ChatController |
+| 领域层 | C++ | 核心实体与规则 | Message, User, Session |
+| 基础设施层 | C++ | 技术基础设施 | NetworkService, LocalDB |
+
+---
+
+## 6.2 核心类详细设计（C++）
+
+本节基于第4章4.2.3节分析类图，对每个类进行详细设计。
+
+### 6.2.1 领域层实体类
+
+#### 类：Message（消息实体）
+
+**设计依据**：第4章4.1.1节实体对象定义 + 第4.3.3节状态机图
+
+**类定义**：
+
+```cpp
+// message.h
+#pragma once
+#include <QString>
+#include <QDateTime>
+#include <memory>
+
+namespace ShirohaChat {
+
+enum class MessageStatus {
+    Sending,    // 发送中（中间瞬态）
+    Delivered,  // 已送达（收到Server-ACK）
+    Failed      // 发送失败（超时或网络异常）
+};
+
+class Message {
+public:
+    // 构造函数：依据第4章通信图"3: create(txt, status=Sending)"
+    explicit Message(const QString& content,
+                    const QString& senderId,
+                    const QString& sessionId);
+
+    // 移动语义支持（C++11/14优化）
+    Message(Message&&) noexcept = default;
+    Message& operator=(Message&&) noexcept = default;
+
+    // 禁止拷贝（消息对象唯一性）
+    Message(const Message&) = delete;
+    Message& operator=(const Message&) = delete;
+
+    ~Message() = default;
+
+    // Getter（依据第4章4.2.3节类图属性）
+    QString msgId() const { return m_msgId; }
+    QString content() const { return m_content; }
+    QString senderId() const { return m_senderId; }
+    QString sessionId() const { return m_sessionId; }
+    QDateTime timestamp() const { return m_timestamp; }
+    MessageStatus status() const { return m_status; }
+
+    // Setter：状态转换（依据第4.3.3节状态机图）
+    void setStatus(MessageStatus newStatus);
+
+private:
+    QString m_msgId;        // UUID（客户端生成）
+    QString m_content;      // 消息内容
+    QString m_senderId;     // 发送者ID
+    QString m_sessionId;    // 所属会话ID
+    QDateTime m_timestamp;  // 创建时间戳
+    MessageStatus m_status; // 当前状态
+};
+
+using MessagePtr = std::unique_ptr<Message>;
+
+} // namespace ShirohaChat
+```
+
+**状态转换约束**（依据第4.3.3节状态机图）：
+
+```text
+Sending --[收到ACK]--> Delivered （成功状态）
+Sending --[超时>3s]--> Failed    （失败状态）
+Failed --[用户重试]--> Sending   （允许重新发送）
+```
+
+**对象生命周期管理**：
+- 使用 `std::unique_ptr<Message>` 表达唯一所有权
+- ChatController 负责创建和管理 Message 对象
+- 通过移动语义避免不必要的拷贝
+
+---
+
+#### 类：Session（会话实体）
+
+**设计依据**：第4章4.1.1节实体对象定义 + 第4章4.2.3节类图
+
+**类定义**：
+
+```cpp
+// session.h
+#pragma once
+#include <QString>
+#include "user.h"
+
+namespace ShirohaChat {
+
+class Session {
+public:
+    explicit Session(const QString& sessionId, const User& chatWith);
+    ~Session() = default;
+
+    QString sessionId() const { return m_sessionId; }
+    const User& chatWith() const { return m_chatWith; }
+
+private:
+    QString m_sessionId;
+    User m_chatWith;  // 聊天对象（私聊场景）
+    // 注：群聊场景需要扩展为 QList<User>，但当前文档未明确，标记为缺口
+};
+
+} // namespace ShirohaChat
+```
+
+**信息缺口标注**：
+- [ ] **待确认**：群聊场景下 Session 如何表示多个参与者？
+- [ ] **待确认**：Session 是否需要维护未读计数？（第2章需求提到，但未在分析类中体现）
+
+---
+
+#### 类：User（用户实体）
+
+**设计依据**：第4章4.1.1节实体对象定义
+
+**类定义**：
+
+```cpp
+// user.h
+#pragma once
+#include <QString>
+
+namespace ShirohaChat {
+
+class User {
+public:
+    explicit User(const QString& userId,
+                 const QString& nickname);
+    ~User() = default;
+
+    QString userId() const { return m_userId; }
+    QString nickname() const { return m_nickname; }
+
+    // 待扩展：头像、在线状态（文档第4章提到但未详细建模）
+
+private:
+    QString m_userId;
+    QString m_nickname;
+    // QString m_avatarUrl;   // 缺口：未在分析类中明确
+    // OnlineStatus m_status; // 缺口：未在分析类中明确
+};
+
+} // namespace ShirohaChat
+```
+
+---
+
+### 6.2.2 控制层
+
+#### 类：ChatController（聊天控制器）
+
+**设计依据**：
+- 第4章4.1.1节控制对象定义
+- 第4章4.2节通信图（方法：sendMessage, handleAck, receiveMessage）
+- 第4章4.3.2节顺序图
+- 第5章5.4.2节单例模式
+
+**类定义**：
+
+```cpp
+// chat_controller.h
+#pragma once
+#include <QObject>
+#include <QString>
+#include <QMap>
+#include <memory>
+#include "message.h"
+#include "session.h"
+#include "network_service.h"
+
+namespace ShirohaChat {
+
+class ChatController : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(Session* currentSession READ currentSession NOTIFY currentSessionChanged)
+
+public:
+    // 单例模式（依据第5章5.4.2节）
+    static ChatController& instance();
+
+    // 禁止拷贝和移动
+    ChatController(const ChatController&) = delete;
+    ChatController& operator=(const ChatController&) = delete;
+
+    Session* currentSession() const { return m_currentSession.get(); }
+
+    // 核心方法（依据第4章通信图和顺序图）
+    Q_INVOKABLE void sendMessage(const QString& content);  // 对应通信图"2: sendMessage(txt)"
+    void onAckReceived(const QString& msgId);              // 对应通信图"5: onAckReceived()"
+    void onMessageReceived(const QString& rawData);        // 接收服务器推送的新消息
+
+signals:
+    // 观察者模式信号（依据第5章5.4.1节）
+    void messageStatusChanged(const QString& msgId, MessageStatus newStatus);
+    void newMessageArrived(const Message& msg);
+    void currentSessionChanged();
+
+private:
+    explicit ChatController(QObject* parent = nullptr);
+    ~ChatController() override = default;
+
+    // 依赖注入（依据第4章类图关联关系）
+    NetworkService& m_networkService;
+
+    // 状态维护
+    std::unique_ptr<Session> m_currentSession;              // 当前会话上下文
+    QMap<QString, MessagePtr> m_pendingMessages;            // 待确认消息队列（msgId -> Message）
+
+    // 内部辅助方法
+    void startAckTimer(const QString& msgId);               // 启动ACK超时计时器（第4章状态机图）
+    void handleSendFailure(const QString& msgId);           // 处理发送失败
+};
+
+} // namespace ShirohaChat
+```
+
+**方法职责说明**：
+
+##### sendMessage(const QString& content)
+
+**依据**：第4章4.3.2节顺序图"发送消息"流程
+
+**前置条件**：
+- 用户已登录
+- currentSession 不为空
+
+**执行逻辑**（Write-Ahead策略，依据第5章5.5节）：
+
+```text
+1. 创建 Message 对象（status = Sending）
+2. 【关键】立即写入本地数据库（防止进程崩溃）
+3. 调用 m_networkService.push(message)
+4. 将消息加入 m_pendingMessages 队列
+5. 启动 ACK 超时计时器（3秒）
+6. emit messageStatusChanged() 通知UI
+```
+
+**异常安全**：
+- 使用 RAII 确保数据库事务完整性
+- 网络发送失败不影响本地存储
+
+##### onAckReceived(const QString& msgId)
+
+**依据**：第4章4.2节通信图"5: onAckReceived()"
+
+**执行逻辑**：
+
+```text
+1. 从 m_pendingMessages 中移除消息
+2. 取消对应的超时计时器
+3. 更新数据库中该消息的状态为 Delivered
+4. emit messageStatusChanged(msgId, Delivered)
+```
+
+**线程安全**：此方法由网络工作线程回调触发，需确保线程安全（使用Qt信号槽的队列连接）
+
+---
+
+#### 类：NetworkService（网络服务）
+
+**设计依据**：
+- 第4章4.1.1节控制对象定义
+- 第4章4.2节通信图（方法：push, connect）
+- 第5章5.3节并发设计
+
+**类定义**：
+
+```cpp
+// network_service.h
+#pragma once
+#include <QObject>
+#include <QString>
+#include <QWebSocket>
+#include <memory>
+
+namespace ShirohaChat {
+
+class NetworkService : public QObject {
+    Q_OBJECT
+
+public:
+    static NetworkService& instance();
+
+    // 禁止拷贝和移动
+    NetworkService(const NetworkService&) = delete;
+    NetworkService& operator=(const NetworkService&) = delete;
+
+    // 核心方法（依据第4章通信图）
+    void connect(const QString& serverUrl);  // 对应"connect()"
+    void push(const Message& msg);           // 对应"4: push(msg)"
+
+signals:
+    void ackReceived(const QString& msgId);
+    void messageArrived(const QString& rawData);
+    void connectionLost();
+
+private:
+    explicit NetworkService(QObject* parent = nullptr);
+    ~NetworkService() override = default;
+
+    // WebSocket连接（运行在独立的网络工作线程，依据第5章5.3节）
+    std::unique_ptr<QWebSocket> m_webSocket;
+
+    // 心跳维护
+    void sendHeartbeat();  // 周期性发送心跳包
+
+    // 重连策略（指数退避，依据第1章NFR需求）
+    void attemptReconnect();
+};
+
+} // namespace ShirohaChat
+```
+
+**线程模型**（依据第5章5.3节）：
+- NetworkService 对象创建在主线程，但WebSocket运行在独立的网络工作线程
+- 使用Qt的信号槽机制实现线程间通信（自动队列连接）
+- 避免在网络线程中直接操作UI或数据库
+
+**信息缺口标注**：
+- [ ] **待确认**：WebSocket数据包的具体格式（JSON? Protobuf?）
+- [ ] **待确认**：心跳间隔时长（文档未明确）
+- [ ] **待确认**：重连策略的具体参数（最大重试次数、退避系数）
+
+---
+
+### 6.2.3 基础设施层
+
+#### 类：LocalDB（本地数据库）
+
+**设计依据**：第5章5.5节数据持久化策略
+
+**类定义**：
+
+```cpp
+// local_db.h
+#pragma once
+#include <QObject>
+#include <QString>
+#include <QSqlDatabase>
+#include "message.h"
+
+namespace ShirohaChat {
+
+class LocalDB : public QObject {
+    Q_OBJECT
+
+public:
+    static LocalDB& instance();
+
+    // 禁止拷贝和移动
+    LocalDB(const LocalDB&) = delete;
+    LocalDB& operator=(const LocalDB&) = delete;
+
+    // 数据库操作（在IO工作线程执行，依据第5章5.3节）
+    bool insertMessage(const Message& msg);
+    bool updateMessageStatus(const QString& msgId, MessageStatus status);
+    QList<Message> queryMessagesBySession(const QString& sessionId, int limit, int offset);
+
+private:
+    explicit LocalDB(QObject* parent = nullptr);
+    ~LocalDB() override = default;
+
+    QSqlDatabase m_db;
+
+    // 异步写入队列（防止阻塞主线程）
+    void processWriteQueue();
+};
+
+} // namespace ShirohaChat
+```
+
+**并发控制**（依据第5章5.3节）：
+- 数据库操作必须在IO工作线程执行
+- 使用`QThreadPool`或专用`QThread`管理IO线程
+- 写操作通过队列异步化，避免阻塞
+
+**信息缺口标注**：
+- [ ] **待确认**：数据库表结构设计（messages表、sessions表、users表的字段定义）
+- [ ] **待确认**：索引策略（查询性能优化）
+- [ ] **待确认**：数据库文件路径和版本管理策略
+
+---
+
+## 6.3 QML前端设计
+
+### 6.3.1 MVVM架构模式
+
+根据第5章分层架构，QML层作为View，通过Qt元对象系统与C++ ViewModel交互。
+
+**架构图**：
+
+```text
+┌─────────────────────────────────────┐
+│        QML View (表现层)             │
+│  ┌─────────────┐  ┌───────────────┐ │
+│  │ ChatWindow  │  │ SessionList   │ │
+│  │   .qml      │  │   .qml        │ │
+│  └─────────────┘  └───────────────┘ │
+└─────────┬────────────────┬──────────┘
+          │ Property       │
+          │ Binding        │
+          │ Signal/Slot    │
+┌─────────▼────────────────▼──────────┐
+│     C++ ViewModel/Controller        │
+│       (ChatController)              │
+│    暴露为 QML Context Property       │
+└─────────────────────────────────────┘
+```
+
+---
+
+### 6.3.2 QML组件设计
+
+#### ChatWindow.qml（聊天窗口）
+
+**设计依据**：第4章4.1.1节边界对象"ChatWindow"
+
+**组件职责**：
+- 显示消息列表（MessageList）
+- 接收用户输入（TextField）
+- 响应发送按钮点击
+
+**QML代码骨架**：
+
+```qml
+// ChatWindow.qml
+import QtQuick 
+import QtQuick.Controls 
+
+Item {
+    id: root
+
+    // 从 C++ ChatController 绑定当前会话
+    property var currentSession: chatController.currentSession
+
+    Column {
+        anchors.fill: parent
+
+        // 消息列表视图
+        ListView {
+            id: messageListView
+            model: messageModel  // C++ QAbstractListModel
+            delegate: MessageBubble {
+                messageText: model.content
+                status: model.status  // Sending/Delivered/Failed
+            }
+        }
+
+        // 输入框
+        TextField {
+            id: inputField
+            placeholderText: "输入消息..."
+        }
+
+        // 发送按钮
+        Button {
+            text: "发送"
+            onClicked: {
+                // 调用 C++ ChatController 的方法（依据第4章通信图）
+                chatController.sendMessage(inputField.text)
+                inputField.clear()
+            }
+        }
+    }
+
+    // 监听消息状态变更信号（观察者模式，依据第5章5.4.1节）
+    Connections {
+        target: chatController
+        function onMessageStatusChanged(msgId, newStatus) {
+            // 更新对应消息的显示状态（转圈 → 对勾 或 红色感叹号）
+            messageModel.updateStatus(msgId, newStatus)
+        }
+    }
+}
+```
+
+**C++与QML交互方式**：
+
+1. **Context Property注册**（在main.cpp中）：
+
+```cpp
+// main.cpp
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include "chat_controller.h"
+
+int main(int argc, char *argv[]) {
+    QGuiApplication app(argc, argv);
+    QQmlApplicationEngine engine;
+
+    // 将 ChatController 单例暴露给 QML
+    engine.rootContext()->setContextProperty(
+        "chatController",
+        &ChatController::instance()
+    );
+
+    engine.load(QUrl(QStringLiteral("qrc:/ChatWindow.qml")));
+    return app.exec();
+}
+```
+
+2. **QAbstractListModel for MessageList**：
+
+```cpp
+// message_list_model.h
+class MessageListModel : public QAbstractListModel {
+    Q_OBJECT
+public:
+    enum Roles {
+        ContentRole = Qt::UserRole + 1,
+        StatusRole,
+        TimestampRole
+    };
+
+    int rowCount(const QModelIndex& parent = QModelIndex()) const override;
+    QVariant data(const QModelIndex& index, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
+
+    Q_INVOKABLE void updateStatus(const QString& msgId, MessageStatus status);
+
+private:
+    QList<Message> m_messages;
+};
+```
+
+---
+
+#### SessionList.qml（会话列表）
+
+**设计依据**：第4章4.1.1节边界对象"SessionList"
+
+**组件职责**：
+- 显示所有会话（好友/群组）
+- 显示未读红点
+- 响应会话点击切换
+
+**QML代码骨架**：
+
+```qml
+// SessionList.qml
+import QtQuick 
+import QtQuick.Controls 
+
+ListView {
+    id: sessionListView
+    model: sessionModel  // C++ QAbstractListModel
+
+    delegate: Rectangle {
+        width: parent.width
+        height: 60
+
+        Row {
+            Text { text: model.nickname }
+            Text { text: model.lastMessage }
+
+            // 未读红点（依据第2章产品需求）
+            Rectangle {
+                visible: model.unreadCount > 0
+                color: "red"
+                radius: 10
+                Text {
+                    text: model.unreadCount
+                    color: "white"
+                }
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: {
+                // 切换会话（需要在 C++ ChatController 中实现）
+                chatController.switchSession(model.sessionId)
+            }
+        }
+    }
+}
+```
+
+**信息缺口标注**：
+- [ ] **待确认**：会话列表的排序规则（按时间？按置顶？）
+- [ ] **待确认**：未读计数的更新机制（何时清零？）
+
+---
+
+## 6.4 对象协作与序列设计
+
+基于第4章4.3.2节顺序图，详细说明关键用况的对象交互。
+
+### 6.4.1 发送消息完整流程
+
+**依据**：第4章顺序图"消息发送与ACK机制"
+
+**C++实现伪代码**：
+
+```cpp
+// chat_controller.cpp
+void ChatController::sendMessage(const QString& content) {
+    // 前置校验
+    if (content.isEmpty() || !m_currentSession) {
+        return;  // 或抛出异常
+    }
+
+    // 1. 创建消息实体（依据通信图"3: create"）
+    auto msg = std::make_unique<Message>(
+        content,
+        getCurrentUserId(),
+        m_currentSession->sessionId()
+    );
+    const QString msgId = msg->msgId();
+
+    // 2. Write-Ahead：立即写入本地数据库（依据第5章5.5节）
+    LocalDB::instance().insertMessage(*msg);
+
+    // 3. 发送网络包（依据通信图"4: push"）
+    m_networkService.push(*msg);
+
+    // 4. 加入待确认队列
+    m_pendingMessages.insert(msgId, std::move(msg));
+
+    // 5. 启动超时计时器（3秒，依据第4章状态机图）
+    startAckTimer(msgId);
+
+    // 6. 通知UI更新（观察者模式）
+    emit messageStatusChanged(msgId, MessageStatus::Sending);
+}
+
+void ChatController::onAckReceived(const QString& msgId) {
+    auto it = m_pendingMessages.find(msgId);
+    if (it != m_pendingMessages.end()) {
+        // 取消超时计时器
+        cancelAckTimer(msgId);
+
+        // 更新状态为 Delivered
+        (*it)->setStatus(MessageStatus::Delivered);
+        LocalDB::instance().updateMessageStatus(msgId, MessageStatus::Delivered);
+
+        // 通知UI
+        emit messageStatusChanged(msgId, MessageStatus::Delivered);
+
+        // 移除待确认队列
+        m_pendingMessages.erase(it);
+    }
+}
+```
+
+**异常处理**：
+- 数据库写入失败：记录日志，消息仍保留在内存中等待重试
+- 网络发送失败：由 NetworkService 触发 `connectionLost()` 信号
+- ACK超时：由定时器触发 `handleSendFailure()`
+
+---
+
+## 6.5 并发与线程安全设计
+
+**依据**：第5章5.3节并发与线程设计
+
+### 6.5.1 线程模型实现
+
+```cpp
+// main.cpp 或 application.cpp
+void setupThreading() {
+    // 1. UI 主线程：Qt主事件循环，运行QML界面
+    //    → 自动由 QGuiApplication 管理
+
+    // 2. 网络工作线程：WebSocket 连接
+    QThread* networkThread = new QThread();
+    NetworkService::instance().moveToThread(networkThread);
+    networkThread->start();
+
+    // 3. IO 工作线程：数据库操作
+    QThread* ioThread = new QThread();
+    LocalDB::instance().moveToThread(ioThread);
+    ioThread->start();
+}
+```
+
+**线程间通信**：
+- 使用Qt信号槽的**队列连接**（Queued Connection）确保线程安全
+- 禁止跨线程直接调用方法（除非使用互斥锁保护）
+
+### 6.5.2 智能指针与所有权管理
+
+```cpp
+// 所有权规则：
+// 1. Message 对象由 ChatController 唯一拥有（unique_ptr）
+// 2. 传递给网络层或数据库层时，使用 const引用（不转移所有权）
+// 3. 从数据库查询返回时，使用 shared_ptr（多个组件可能引用历史消息）
+
+void ChatController::sendMessage(const QString& content) {
+    auto msg = std::make_unique<Message>(...);  // 唯一所有权
+
+    LocalDB::instance().insertMessage(*msg);    // 传递引用，不转移所有权
+    m_networkService.push(*msg);                // 传递引用
+
+    m_pendingMessages.insert(msg->msgId(), std::move(msg));  // 转移所有权
+}
+```
+
+---
+
+## 6.6 关键设计决策与缺口清单
+
+### 6.6.1 已确定的设计决策
+
+1. **单例模式适用范围**（依据第5章5.4.2节）：
+   - ChatController：全局唯一，管理应用状态
+   - NetworkService：全局唯一，维护单一WebSocket连接
+   - LocalDB：全局唯一，避免数据库连接冲突
+
+2. **观察者模式实现**（依据第5章5.4.1节）：
+   - 使用Qt信号槽机制天然支持观察者模式
+   - ChatController 发射信号，QML 组件通过 Connections 订阅
+
+3. **Write-Ahead策略**（依据第5章5.5节）：
+   - 消息先写数据库，再发网络
+   - 确保进程崩溃时消息不丢失
+
+### 6.6.2 信息缺口与待确认清单
+
+**高优先级缺口**：
+- [ ] **协议设计**：WebSocket数据包的JSON格式定义（字段、类型、示例）
+- [ ] **数据库Schema**：messages/sessions/users 表的完整字段定义和索引策略
+- [ ] **NFR量化**：ACK超时阈值（当前假设3秒）、心跳间隔、重连策略参数
+
+**中优先级缺口**：
+- [ ] **群聊支持**：Session 如何表示多人会话？Message 如何关联到群？
+- [ ] **消息类型扩展**：图片/语音/文件消息的存储和传输方式（当前仅支持文本）
+- [ ] **离线消息**：用户上线后如何拉取离线消息？（第1章提到但未建模）
+
+**低优先级缺口**：
+- [ ] **已读/未读**：消息已读状态的服务端同步机制
+- [ ] **搜索功能**：全文搜索的实现方式（数据库FTS? 独立索引?）
+- [ ] **黑名单/陌生人消息请求**：具体的业务逻辑和UI交互流程
 
 ---
 
