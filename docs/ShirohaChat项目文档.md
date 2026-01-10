@@ -999,15 +999,18 @@ public:
 private:
     QString m_sessionId;
     User m_chatWith;  // 聊天对象（私聊场景）
-    // 注：群聊场景需要扩展为 QList<User>，但当前文档未明确，标记为缺口
+
+    // ===== TODO: 非MVP功能（后续扩展） =====
+    // QList<User> m_participants;  // 群聊场景：多个参与者
+    // int m_unreadCount;           // 未读消息计数
 };
 
 } // namespace ShirohaChat
 ```
 
-**信息缺口标注**：
-- [ ] **待确认**：群聊场景下 Session 如何表示多个参与者？
-- [ ] **待确认**：Session 是否需要维护未读计数？（第2章需求提到，但未在分析类中体现）
+**非MVP功能标记（TODO）**：
+- [ ] **群聊支持**：Session如何表示多人会话（需扩展为QList<User>）
+- [ ] **未读计数**：Session维护未读消息数（需增加m_unreadCount字段）
 
 ---
 
@@ -1033,17 +1036,22 @@ public:
     QString userId() const { return m_userId; }
     QString nickname() const { return m_nickname; }
 
-    // 待扩展：头像、在线状态（文档第4章提到但未详细建模）
-
 private:
     QString m_userId;
     QString m_nickname;
-    // QString m_avatarUrl;   // 缺口：未在分析类中明确
-    // OnlineStatus m_status; // 缺口：未在分析类中明确
+
+    // ===== TODO: 非MVP功能（后续扩展） =====
+    // QString m_avatarUrl;      // 头像URL
+    // OnlineStatus m_status;    // 在线状态（online/offline/away）
 };
 
 } // namespace ShirohaChat
 ```
+
+**非MVP功能标记（TODO）**：
+
+- [ ] **头像功能**：用户头像显示（需增加m_avatarUrl字段）
+- [ ] **在线状态**：用户在线/离线状态显示（需增加m_status字段和OnlineStatus枚举）
 
 ---
 
@@ -1218,11 +1226,6 @@ private:
 - 使用Qt的信号槽机制实现线程间通信（自动队列连接）
 - 避免在网络线程中直接操作UI或数据库
 
-**信息缺口标注**：
-- [ ] **待确认**：WebSocket数据包的具体格式（JSON? Protobuf?）
-- [ ] **待确认**：心跳间隔时长（文档未明确）
-- [ ] **待确认**：重连策略的具体参数（最大重试次数、退避系数）
-
 ---
 
 ### 6.2.3 基础设施层
@@ -1275,11 +1278,6 @@ private:
 - 数据库操作必须在IO工作线程执行
 - 使用`QThreadPool`或专用`QThread`管理IO线程
 - 写操作通过队列异步化，避免阻塞
-
-**信息缺口标注**：
-- [ ] **待确认**：数据库表结构设计（messages表、sessions表、users表的字段定义）
-- [ ] **待确认**：索引策略（查询性能优化）
-- [ ] **待确认**：数据库文件路径和版本管理策略
 
 ---
 
@@ -1432,16 +1430,20 @@ private:
 **设计依据**：第4章4.1.1节边界对象"SessionList"
 
 **组件职责**：
-- 显示所有会话（好友/群组）
-- 显示未读红点
+
+- 显示所有会话（好友列表）
 - 响应会话点击切换
+
+**非MVP功能（TODO）**：
+
+- [ ] 显示未读红点（需配合未读计数功能）
 
 **QML代码骨架**：
 
 ```qml
 // SessionList.qml
-import QtQuick 
-import QtQuick.Controls 
+import QtQuick
+import QtQuick.Controls
 
 ListView {
     id: sessionListView
@@ -1455,22 +1457,22 @@ ListView {
             Text { text: model.nickname }
             Text { text: model.lastMessage }
 
-            // 未读红点（依据第2章产品需求）
-            Rectangle {
-                visible: model.unreadCount > 0
-                color: "red"
-                radius: 10
-                Text {
-                    text: model.unreadCount
-                    color: "white"
-                }
-            }
+            // ===== TODO: 非MVP功能（未读红点） =====
+            // Rectangle {
+            //     visible: model.unreadCount > 0
+            //     color: "red"
+            //     radius: 10
+            //     Text {
+            //         text: model.unreadCount
+            //         color: "white"
+            //     }
+            // }
         }
 
         MouseArea {
             anchors.fill: parent
             onClicked: {
-                // 切换会话（需要在 C++ ChatController 中实现）
+                // 切换会话
                 chatController.switchSession(model.sessionId)
             }
         }
@@ -1478,9 +1480,10 @@ ListView {
 }
 ```
 
-**信息缺口标注**：
-- [ ] **待确认**：会话列表的排序规则（按时间？按置顶？）
-- [ ] **待确认**：未读计数的更新机制（何时清零？）
+**非MVP功能标记（TODO）**：
+
+- [ ] **会话排序**：按最后消息时间排序（已在数据库设计中预留last_message_time字段）
+- [ ] **未读计数清零机制**：用户打开会话后如何清零未读数（需后端支持）
 
 ---
 
@@ -1600,9 +1603,412 @@ void ChatController::sendMessage(const QString& content) {
 
 ---
 
-## 6.6 关键设计决策与缺口清单
+## 6.6 通信协议设计
 
-### 6.6.1 已确定的设计决策
+### 6.6.1 WebSocket数据包协议
+
+根据第5章物理部署架构（全双工WebSocket长连接），本节定义JSON格式的数据包规范。
+
+#### 数据包通用格式
+
+所有WebSocket消息采用JSON格式，分为**客户端请求**与**服务器响应/推送**两类。
+
+**通用字段**：
+
+```json
+{
+  "cmd": "string",           // 命令类型
+  "msgId": "string",         // 消息ID（用于关联请求和响应）
+  "timestamp": "ISO8601",    // 时间戳
+  "payload": "object",       // 具体数据
+  "code": "number",          // 响应码（仅在响应中）
+  "message": "string"        // 错误消息（仅在失败时）
+}
+```
+
+#### 主要命令类型
+
+##### 1. 发送消息 (cmd: "send_message")
+
+**客户端请求**：
+```json
+{
+  "cmd": "send_message",
+  "msgId": "uuid-1001",                    // 由客户端生成
+  "timestamp": "2026-01-09T10:30:45Z",
+  "payload": {
+    "sessionId": "session-123",            // 会话ID（双人聊天）
+    "content": "Hello, World!",
+    "senderUserId": "user-001",
+    "senderNickname": "Alice"
+  }
+}
+```
+
+**服务器ACK响应**（必须在3秒内返回，依据第4章状态机图）：
+```json
+{
+  "cmd": "send_message_ack",
+  "msgId": "uuid-1001",                    // 原消息ID
+  "timestamp": "2026-01-09T10:30:45Z",
+  "code": 200,
+  "payload": {
+    "serverId": "server-msg-5678",         // 服务器分配的消息ID
+    "deliveredAt": "2026-01-09T10:30:45Z"
+  }
+}
+```
+
+**失败响应**：
+```json
+{
+  "cmd": "send_message_ack",
+  "msgId": "uuid-1001",
+  "code": 400,                             // 错误码
+  "message": "Invalid session or user"
+}
+```
+
+##### 2. 接收消息 (cmd: "receive_message")
+
+**服务器推送**（当有新消息到达时，主动发送给接收方）：
+```json
+{
+  "cmd": "receive_message",
+  "msgId": "server-msg-5678",
+  "timestamp": "2026-01-09T10:30:46Z",
+  "payload": {
+    "sessionId": "session-123",
+    "content": "Hi, Alice!",
+    "senderUserId": "user-002",
+    "senderNickname": "Bob",
+    "serverId": "server-msg-5679"
+  }
+}
+```
+
+**客户端确认**（接收方收到新消息后立即确认，防止重复投递）：
+```json
+{
+  "cmd": "message_received_ack",
+  "msgId": "server-msg-5679",              // 被确认的消息ID
+  "timestamp": "2026-01-09T10:30:46Z",
+  "code": 200
+}
+```
+
+##### 3. 心跳 (cmd: "heartbeat")
+
+**客户端定期发送**（每30秒，依据第5章并发设计）：
+```json
+{
+  "cmd": "heartbeat",
+  "msgId": "heartbeat-timestamp",
+  "timestamp": "2026-01-09T10:31:00Z"
+}
+```
+
+**服务器回复**：
+```json
+{
+  "cmd": "heartbeat_ack",
+  "msgId": "heartbeat-timestamp",
+  "code": 200
+}
+```
+
+##### 4. 连接初始化 (cmd: "connect")
+
+**客户端连接建立后，立即发送身份信息**：
+```json
+{
+  "cmd": "connect",
+  "msgId": "connect-uuid-1",
+  "timestamp": "2026-01-09T10:30:00Z",
+  "payload": {
+    "userId": "user-001",
+    "nickname": "Alice",
+    "clientVersion": "1.0.0"
+  }
+}
+```
+
+**服务器确认**：
+```json
+{
+  "cmd": "connect_ack",
+  "msgId": "connect-uuid-1",
+  "code": 200,
+  "payload": {
+    "sessionToken": "token-abc123",        // 会话令牌（用于后续验证）
+    "serverId": "server-001"
+  }
+}
+```
+
+##### 5. 离线消息拉取（超出即时通信MVP范围）
+
+留给后续扩展。
+
+#### 协议约束与性能目标
+
+1. **ACK超时**：3秒（依据第4章4.3.3节状态机图）
+   - 客户端发送消息后，如果3秒内未收到服务器ACK，标记为Failed
+
+2. **心跳间隔**：30秒（业界标准，防止连接被中间层断开）
+   - 防止NAT超时、代理断线等问题
+
+3. **消息丢失防护**：
+   - 客户端Write-Ahead：消息先写本地DB再发送（依据第5章5.5节）
+   - 服务器Side：消息持久化后再返回ACK
+   - 接收端确认：客户端收到消息后立即发送接收确认
+
+#### 错误码定义
+
+| 码  | 含义                | 处理策略              |
+|----|------------------|------------------|
+| 200 | 成功               | 继续                |
+| 400 | 请求格式错误       | 记录日志，不重试     |
+| 401 | 认证失败           | 提示用户重新登录     |
+| 403 | 权限不足           | 记录日志，用户通知   |
+| 500 | 服务器错误         | 等待后重试           |
+| 503 | 服务不可用         | 断线重连             |
+
+---
+
+## 6.7 数据库Schema设计
+
+### 6.7.1 SQLite表结构定义
+
+根据第5章数据持久化策略（Write-Ahead），客户端需要本地存储消息、会话和用户信息。
+
+#### 表：messages（消息表）
+
+```sql
+CREATE TABLE IF NOT EXISTS messages (
+    msg_id TEXT PRIMARY KEY,                    -- 消息唯一ID（UUID）
+    session_id TEXT NOT NULL,                   -- 会话ID
+    sender_user_id TEXT NOT NULL,               -- 发送者ID
+    sender_nickname TEXT,                       -- 发送者昵称（冗余存储，加速查询）
+    content TEXT NOT NULL,                      -- 消息内容
+    status TEXT NOT NULL,                       -- 状态：Sending/Delivered/Failed（对应第4章MessageStatus枚举）
+    timestamp TEXT NOT NULL,                    -- 消息创建时间（ISO8601）
+    server_id TEXT,                             -- 服务器分配的消息ID（用于去重）
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(session_id) REFERENCES sessions(session_id)
+);
+
+CREATE INDEX idx_messages_session_id ON messages(session_id);
+CREATE INDEX idx_messages_timestamp ON messages(timestamp DESC);
+CREATE INDEX idx_messages_status ON messages(status);
+```
+
+**字段说明**：
+- `msg_id`：由客户端生成（UUID），确保唯一性
+- `status`：对应第4章4.3.3节状态机的三个状态
+- `server_id`：服务器返回的确认ID，用于幂等性检查（重复消息去重）
+- `created_at`/`updated_at`：用于审计和查询优化
+
+#### 表：sessions（会话表）
+
+```sql
+CREATE TABLE IF NOT EXISTS sessions (
+    session_id TEXT PRIMARY KEY,                -- 会话唯一ID
+    user_id_1 TEXT NOT NULL,                    -- 双人聊天中的第一方
+    user_id_2 TEXT NOT NULL,                    -- 双人聊天中的第二方
+    session_type TEXT NOT NULL DEFAULT 'P2P',  -- 会话类型：P2P（双人）
+    last_message_id TEXT,                       -- 最后一条消息ID
+    last_message_time TEXT,                     -- 最后一条消息时间（用于排序）
+    -- TODO: 非MVP字段（后续扩展）
+    -- unread_count INTEGER DEFAULT 0,         -- 未读消息计数
+    -- is_archived INTEGER DEFAULT 0,          -- 是否已存档（逻辑删除）
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id_1) REFERENCES users(user_id),
+    FOREIGN KEY(user_id_2) REFERENCES users(user_id)
+);
+
+CREATE INDEX idx_sessions_last_message_time ON sessions(last_message_time DESC);
+CREATE UNIQUE INDEX idx_sessions_p2p ON sessions(user_id_1, user_id_2)
+    WHERE session_type = 'P2P';
+```
+
+**字段说明**：
+- `session_id`：由客户端生成，格式：`P2P_{min(user_id_1, user_id_2)}_{max(user_id_1, user_id_2)}`
+- `session_type`：双人聊天固定为'P2P'（群聊扩展时使用'GROUP'）
+- `last_message_id`/`last_message_time`：用于会话列表排序
+
+**非MVP字段**：
+
+- `unread_count`：未读消息计数（需配合已读/未读功能实现）
+- `is_archived`：软删除标记（需配合归档功能实现）
+
+#### 表：users（用户表）
+
+```sql
+CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,                   -- 用户ID
+    nickname TEXT NOT NULL,                     -- 用户昵称
+    -- TODO: 非MVP字段（后续扩展）
+    -- avatar_url TEXT,                         -- 头像URL
+    -- status TEXT DEFAULT 'offline',           -- 在线状态：online/offline
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**字段说明**：
+
+- `user_id`：用户唯一标识
+- `nickname`：用户昵称
+
+**非MVP字段（已注释）**：
+
+- `avatar_url`：头像URL（需配合头像上传/显示功能实现）
+- `status`：在线状态（需配合在线状态同步机制实现）
+
+#### 表：pending_acks（待确认消息队列）
+
+```sql
+CREATE TABLE IF NOT EXISTS pending_acks (
+    msg_id TEXT PRIMARY KEY,                    -- 消息ID
+    timestamp_sent TEXT NOT NULL,               -- 发送时间
+    retry_count INTEGER DEFAULT 0,              -- 重试次数
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_pending_acks_timestamp ON pending_acks(timestamp_sent ASC);
+```
+
+**用途**：
+- 程序启动时，查询该表恢复待确认消息
+- 避免消息丢失（即使进程崩溃）
+- 周期性清理已确认的消息（删除操作）
+
+### 6.7.2 Schema版本管理与迁移策略
+
+为了便于未来扩展，定义简单的版本控制：
+
+```sql
+CREATE TABLE IF NOT EXISTS db_version (
+    version INTEGER PRIMARY KEY,
+    migration_name TEXT NOT NULL,
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 初始化时插入版本1
+INSERT INTO db_version (version, migration_name) VALUES (1, 'init_schema');
+```
+
+**迁移流程**（伪代码）：
+```cpp
+// local_db.cpp
+bool LocalDB::ensureSchema() {
+    int currentVersion = getSchemaVersion();  // 查询 db_version 表
+    int targetVersion = 1;                    // 当前版本
+
+    while (currentVersion < targetVersion) {
+        applyMigration(currentVersion + 1);
+        currentVersion++;
+    }
+    return true;
+}
+```
+
+---
+
+## 6.8 非功能性需求量化决策
+
+根据第1章1.2节关键指标，本章细化具体参数值。
+
+### 6.8.1 延迟与吞吐量指标
+
+| 指标                | 目标值      | 决策依据              |
+|------------------|-----------|------------------|
+| 端到端延迟          | ≤ 200ms   | 文档第1章明确要求     |
+| ACK超时阈值       | 3秒       | 150%容错裕度（1.5×200ms） |
+| 消息到达确认时间   | ≤ 100ms   | 服务器处理 + 网络往返  |
+| 心跳间隔          | 30秒      | 业界标准（NAT超时30~60s） |
+| 消息送达率          | ≥ 99.99%  | 文档第1章明确要求    |
+
+**解释**：
+- ACK超时 = 3秒是保守估计。在200ms延迟目标下，允许15倍的延迟突刺，仍能在合理时间内检测故障。
+- 心跳30秒：大多数NAT网关的空闲超时为60-90秒，30秒心跳提供充足的安全边界。
+
+### 6.8.2 连接与重连策略
+
+#### 初始连接
+
+**客户端连接流程**（依据第6.6.1节connect命令）：
+
+1. 建立WebSocket连接
+2. 发送connect命令，携带userId和sessionToken
+3. 等待服务器connect_ack（超时3秒）
+4. 收到ack后，进入正常通信状态
+
+#### 断线重连
+
+**指数退避策略**：
+
+```text
+第1次失败：等待 1秒 后重试
+第2次失败：等待 2秒 后重试
+第3次失败：等待 4秒 后重试
+第4次失败：等待 8秒 后重试
+第5次失败：等待 16秒 后重试
+超过5次：停止自动重连，提示用户手动重连
+```
+
+**参数**：
+- 初始延迟：1秒
+- 延迟倍增因子：2
+- 最大延迟：60秒（第5次后保持）
+- 最大重试次数：5次
+
+**实现伪代码**：
+```cpp
+int getBackoffDelay(int retryCount) {
+    int delay = 1000 * (1 << retryCount);  // 1秒 * 2^retryCount（毫秒）
+    return std::min(delay, 60000);         // 最多60秒
+}
+```
+
+#### 消息持久化与恢复
+
+**程序启动时恢复待确认消息**：
+
+```cpp
+// chat_controller.cpp - 初始化时调用
+void ChatController::recoverPendingMessages() {
+    auto pendingMsgs = LocalDB::instance().queryPendingAcks();
+    for (const auto& msg : pendingMsgs) {
+        if (msg.retryCount < 3) {  // 最多重试3次
+            m_networkService.push(msg);
+            msg.retryCount++;
+        } else {
+            // 标记为失败，通知用户
+            LocalDB::instance().updateMessageStatus(msg.msgId, MessageStatus::Failed);
+        }
+    }
+}
+```
+
+### 6.8.3 性能预期与约束
+
+| 场景                | 性能预期      | 备注              |
+|------------------|-------------|-----------------|
+| 消息发送延迟        | ≤ 200ms    | 端到端延迟目标   |
+| 消息显示延迟        | ≤ 50ms     | 本地UI刷新      |
+| 单个会话查询        | ≤ 100ms    | SQLite检索100条消息 |
+| 并发连接数（单节点） | ≥ 5000     | 服务器能力（不在客户端关键路径） |
+| 本地存储容量        | ≥ 1GB      | SQLite支持（取决于设备） |
+
+---
+
+## 6.9 关键设计决策与问题清单
+
+### 6.9.1 已确定的设计决策
 
 1. **单例模式适用范围**（依据第5章5.4.2节）：
    - ChatController：全局唯一，管理应用状态
@@ -1617,30 +2023,184 @@ void ChatController::sendMessage(const QString& content) {
    - 消息先写数据库，再发网络
    - 确保进程崩溃时消息不丢失
 
-### 6.6.2 信息缺口与待确认清单
+4. **WebSocket协议格式**（第6.6节）：
+   - JSON格式数据包
+   - 命令式交互（cmd字段区分命令类型）
+   - 完整的ACK机制（send_message → send_message_ack）
 
-**高优先级缺口**：
-- [ ] **协议设计**：WebSocket数据包的JSON格式定义（字段、类型、示例）
-- [ ] **数据库Schema**：messages/sessions/users 表的完整字段定义和索引策略
-- [ ] **NFR量化**：ACK超时阈值（当前假设3秒）、心跳间隔、重连策略参数
+5. **数据库Schema**（第6.7节）：
+   - 四张核心表：messages、sessions、users、pending_acks
+   - 冗余存储昵称提升查询性能
+   - 软删除策略保留数据可恢复性
 
-**中优先级缺口**：
+6. **NFR量化参数**（第6.8节）：
+   - ACK超时：3秒
+   - 心跳间隔：30秒
+   - 重连策略：指数退避，最多5次
+   - 消息重试：最多3次
+
+### 6.9.2 超出即时通信MVP范围（标记为后续扩展）
+
+**中优先级（本次不实现）**：
 - [ ] **群聊支持**：Session 如何表示多人会话？Message 如何关联到群？
+  - 设计思路：sessions表中session_type='GROUP'，增加group_members关联表
 - [ ] **消息类型扩展**：图片/语音/文件消息的存储和传输方式（当前仅支持文本）
+  - 设计思路：Message增加content_type字段，content存储文件路径或URL
 - [ ] **离线消息**：用户上线后如何拉取离线消息？（第1章提到但未建模）
+  - 设计思路：服务器维护离线消息队列，客户端连接后自动拉取
 
-**低优先级缺口**：
+**低优先级（本次不实现）**：
 - [ ] **已读/未读**：消息已读状态的服务端同步机制
 - [ ] **搜索功能**：全文搜索的实现方式（数据库FTS? 独立索引?）
 - [ ] **黑名单/陌生人消息请求**：具体的业务逻辑和UI交互流程
+- [ ] **用户认证系统**：当前使用简化的userId和sessionToken
+- [ ] **头像与在线状态**：users表预留字段，但不在本次实现范围
+
+---
+
+## 6.10 即时通信MVP简化架构图
+
+### 6.10.1 系统部署视图（即时通信MVP）
+
+```plantuml
+@startuml
+skinparam componentStyle rectangle
+
+node "Alice客户端" as ClientA {
+    [ChatWindow] as UIA
+    [ChatController] as CtrlA
+    [NetworkService] as NetA
+    [SQLite DB] as DBA
+
+    UIA --> CtrlA
+    CtrlA --> NetA
+    CtrlA --> DBA
+}
+
+node "Bob客户端" as ClientB {
+    [ChatWindow] as UIB
+    [ChatController] as CtrlB
+    [NetworkService] as NetB
+    [SQLite DB] as DBB
+
+    UIB --> CtrlB
+    CtrlB --> NetB
+    CtrlB --> DBB
+}
+
+node "消息服务器" as Server {
+    [WebSocket Handler]
+    [Message Router]
+    [Persistence Layer]
+}
+
+NetA ..> Server : WebSocket
+NetB ..> Server : WebSocket
+
+note bottom of Server
+  服务器设计不在本文档范围
+  客户端详细设计已完成
+end note
+
+@enduml
+```
+
+### 6.10.2 客户端核心模块交互图
+
+```plantuml
+@startuml
+skinparam linetype ortho
+
+package "表现层 (QML)" {
+    [ChatWindow.qml]
+    [SessionList.qml]
+}
+
+package "控制层 (C++)" {
+    [ChatController]
+}
+
+package "领域层 (C++)" {
+    [Message]
+    [Session]
+    [User]
+}
+
+package "基础设施层 (C++)" {
+    [NetworkService]
+    [LocalDB]
+}
+
+[ChatWindow.qml] -down-> [ChatController] : Q_INVOKABLE\nsendMessage()
+[SessionList.qml] -down-> [ChatController]
+
+[ChatController] -down-> [Message] : 创建/管理
+[ChatController] -down-> [Session] : 维护当前会话
+[ChatController] -right-> [NetworkService] : push()
+[ChatController] -right-> [LocalDB] : insertMessage()
+
+[NetworkService] .up.> [ChatController] : signal:\nackReceived()
+[LocalDB] ..> [Message] : 持久化
+
+note right of [ChatController]
+  核心协调者
+  实现第4章顺序图逻辑
+end note
+
+@enduml
+```
+
+### 6.10.3 消息发送完整数据流
+
+```plantuml
+@startuml
+autonumber
+
+actor "用户Alice" as Alice
+participant "ChatWindow.qml" as UI
+participant "ChatController" as Ctrl
+participant "LocalDB" as DB
+participant "NetworkService" as Net
+participant "服务器" as Server
+participant "NetworkService" as NetBob
+participant "ChatController" as CtrlBob
+participant "ChatWindow.qml" as UIBob
+actor "用户Bob" as Bob
+
+Alice -> UI : 1. 输入"Hello"并点击发送
+UI -> Ctrl : 2. sendMessage("Hello")
+Ctrl -> DB : 3. insertMessage(msg)
+DB --> Ctrl : 4. 写入成功
+Ctrl -> Net : 5. push(msg)
+Net -> Server : 6. WebSocket: send_message
+Server -> NetBob : 7. WebSocket: receive_message
+NetBob -> CtrlBob : 8. onMessageReceived()
+CtrlBob -> UIBob : 9. signal: newMessageArrived
+UIBob -> Bob : 10. 显示"Hello"
+
+Server --> Net : 11. WebSocket: send_message_ack
+Net -> Ctrl : 12. onAckReceived(msgId)
+Ctrl -> DB : 13. updateStatus(Delivered)
+Ctrl -> UI : 14. signal: messageStatusChanged
+UI -> Alice : 15. 显示✓图标
+
+note over Ctrl, DB
+  Write-Ahead策略：
+  第3步写DB，第5步发网络
+end note
+
+note over Server
+  服务器逻辑：
+  接收→持久化→ACK→转发
+end note
+
+@enduml
+```
 
 ---
 
 # 后记
 
-
-
 ---
 
 # 参考文献
-
