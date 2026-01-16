@@ -130,6 +130,7 @@ Thumbs.db
 .env.local
 config.local.*
 
+*.db*
 .ace-tool/
 .claude/
 CLAUDE.md

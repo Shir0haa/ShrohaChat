@@ -1,0 +1,26 @@
+Checks: >-
+  clang-analyzer-*,
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  readability-*,
+  qt-*,
+  -cppcoreguidelines-*,
+  -hicpp-*,
+  -misc-include-cleaner,
+  -readability-identifier-naming,
+  -readability-magic-numbers,
+  -readability-braces-around-statements,
+  -modernize-use-trailing-return-type,
+  -modernize-use-designated-initializers,
+  -modernize-return-braced-init-list
+WarningsAsErrors: ''
+HeaderFilterRegex: '(^|.*/)src/.*'
+FormatStyle: file
+CheckOptions:
+  - key:             modernize-use-nullptr.NullMacros
+    value:           'NULL'
+  - key:             modernize-use-override.IgnoreDestructors
+    value:           '1'
+  - key:             readability-function-cognitive-complexity.Threshold
+    value:           '25'

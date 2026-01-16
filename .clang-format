@@ -1,0 +1,49 @@
+BasedOnStyle: LLVM
+Language:        Cpp
+IndentWidth:     4
+TabWidth:        4
+UseTab:          Never
+ColumnLimit:     120
+PointerAlignment: Left
+DerivePointerAlignment: false
+SpaceBeforeParens: ControlStatements
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+BreakBeforeBinaryOperators: NonAssignment
+BreakConstructorInitializers: BeforeComma
+ReflowComments:  false
+
+# Qt-ish brace style: new line for functions/classes/namespaces, same line for control statements
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass:            true
+  AfterControlStatement: false
+  AfterEnum:             true
+  AfterFunction:         true
+  AfterNamespace:        true
+  AfterStruct:           true
+  AfterUnion:            true
+  BeforeCatch:           true
+  BeforeElse:            true
+  IndentBraces:          false
+
+# Includes
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:       '^\"'                 # Project headers
+    Priority:    1
+  - Regex:       '^(<|\")[Q][A-Z].*'      # Qt headers (e.g., <QGuiApplication>)
+    Priority:    2
+  - Regex:       '^(<|\")(Qt/|Qt6?)[^\"]+\"?>' # Qt module headers
+    Priority:    2
+  - Regex:       '^(<|\")[a-zA-Z0-9_/.-]+(\.h|\.hpp|\.hh|\.hxx)>$'
+    Priority:    3
+  - Regex:       '.*'
+    Priority:    4
+IncludeIsMainRegex: '([-_](test|unittest))?$'
+
+# Namespaces and access modifiers
+FixNamespaceComments: true
+NamespaceIndentation: None
