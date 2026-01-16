@@ -1,4 +1,6 @@
 # ShirohaChat
+Jimmy wang：王俊民2023051604083
+
 
 [![Qt](https://img.shields.io/badge/Qt-6.8+-41CD52?logo=qt)](https://www.qt.io/)
 [![C++](https://img.shields.io/badge/C++-20-00599C?logo=cplusplus)](https://isocpp.org/)
