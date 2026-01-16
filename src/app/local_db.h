@@ -1,5 +1,7 @@
 #pragma once
 
+#include "domain/message.h"
+
 #include <QDateTime>
 #include <QJSEngine>
 #include <QObject>
@@ -7,8 +9,6 @@
 #include <QSqlDatabase>
 #include <QString>
 #include <QtQml/qqml.h>
-
-#include "domain/message.h"
 
 namespace ShirohaChat
 {
@@ -26,9 +26,12 @@ class LocalDB : public QObject
     static LocalDB& instance();
     static LocalDB* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
 
+    LocalDB(const LocalDB&) = delete;
+    LocalDB& operator=(const LocalDB&) = delete;
+
     Q_INVOKABLE bool open(const QString& databasePath);
     Q_INVOKABLE void close();
-    Q_INVOKABLE bool isOpen() const;
+    Q_INVOKABLE [[nodiscard]] bool isOpen() const;
 
     bool insertMessage(const Message& msg);
     bool updateMessageStatus(const QString& msgId, MessageStatus status);
@@ -48,9 +51,6 @@ class LocalDB : public QObject
   private:
     explicit LocalDB(QObject* parent);
     ~LocalDB() override;
-
-    LocalDB(const LocalDB&) = delete;
-    LocalDB& operator=(const LocalDB&) = delete;
 
     bool ensureSchema();
 

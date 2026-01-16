@@ -28,9 +28,9 @@ class SessionListModel : public QAbstractListModel
 
     explicit SessionListModel(QObject* parent = nullptr);
 
-    int rowCount(const QModelIndex& parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
-    QHash<int, QByteArray> roleNames() const override;
+    [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
+    [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
+    [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
     struct SessionItem
     {
@@ -45,7 +45,7 @@ class SessionListModel : public QAbstractListModel
     void refresh(const QList<SessionItem>& sessions);
     void upsertSession(SessionItem session, bool incrementUnread);
     void clearUnread(const QString& sessionId);
-    QString displayNameForSession(const QString& sessionId) const;
+    [[nodiscard]] QString displayNameForSession(const QString& sessionId) const;
 
   private:
     QList<SessionItem> m_sessions;

@@ -1,5 +1,9 @@
 #pragma once
 
+#include "domain/message.h"
+#include "local_db.h"
+#include "network_service.h"
+
 #include <QAbstractListModel>
 #include <QHash>
 #include <QJSEngine>
@@ -10,10 +14,6 @@
 #include <QString>
 #include <QTimer>
 #include <QtQml/qqml.h>
-
-#include "domain/message.h"
-#include "local_db.h"
-#include "network_service.h"
 
 namespace ShirohaChat
 {
@@ -36,12 +36,15 @@ class ChatController : public QObject
     static ChatController& instance();
     static ChatController* create(QQmlEngine* qmlEngine, QJSEngine* jsEngine);
 
-    QString currentSessionId() const;
-    QString currentSessionName() const;
-    QAbstractListModel* sessionModel() const;
-    QAbstractListModel* currentMessageModel() const;
+    ChatController(const ChatController&) = delete;
+    ChatController& operator=(const ChatController&) = delete;
 
-    Q_INVOKABLE void connect(const QString& url, const QString& userId);
+    [[nodiscard]] QString currentSessionId() const ;
+    [[nodiscard]] QString currentSessionName() const;
+    [[nodiscard]] QAbstractListModel* sessionModel() const;
+    [[nodiscard]] QAbstractListModel* currentMessageModel() const;
+
+    Q_INVOKABLE void connect(const QString& serverUrl, const QString& userId);
     Q_INVOKABLE void loadSessions();
     Q_INVOKABLE void sendMessage(const QString& content);
     Q_INVOKABLE void switchToSession(const QString& sessionId);
@@ -55,9 +58,6 @@ class ChatController : public QObject
 
   private:
     explicit ChatController(QObject* parent);
-
-    ChatController(const ChatController&) = delete;
-    ChatController& operator=(const ChatController&) = delete;
 
     void onAckReceived(const QString& msgId);
     void onSendTimeout(const QString& msgId);
